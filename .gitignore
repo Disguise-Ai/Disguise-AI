@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build
+*.xcarchive
+build/
+DerivedData/
+
+# Environment
+.env
+*.env.local
+
+# OS
+.DS_Store
+*.swp
+
+# Data
+data/profiles.json
+uploads/
+
+# Xcode
+*.xcuserstate
+xcuserdata/

@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Disguise.AI</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="app">
+    <section id="onboard" class="onboard-screen">
+      <header class="onboard-header">
+        <div class="logo"><span class="logo-green">Disguise</span><span class="logo-black">.AI</span></div>
+        <p class="tag">Effortlessly start meaningful conversations</p>
+      </header>
+      <div class="onboard-content">
+        <div class="onboard-notice">
+          <p class="notice-title">The more you share, the better I get</p>
+          <p class="notice-desc">I'll learn your style and give you responses that actually sound like you</p>
+        </div>
+        <p class="question-label">How do you want to come across?</p>
+        <p class="muted" style="margin-bottom:16px;">Select all that apply</p>
+        <div id="vibe-options" class="vibe-options">
+          <button data-vibe="confident">Confident</button>
+          <button data-vibe="funny">Funny</button>
+          <button data-vibe="flirty">Flirty</button>
+          <button data-vibe="chill">Chill</button>
+          <button data-vibe="mysterious">Mysterious</button>
+          <button data-vibe="bold">Bold</button>
+          <button data-vibe="witty">Witty</button>
+          <button data-vibe="charming">Charming</button>
+          <button data-vibe="playful">Playful</button>
+          <button data-vibe="direct">Direct</button>
+        </div>
+        <div id="questions" style="display:none;"></div>
+
+        <div class="onboard-footer">
+          <input id="name" placeholder="Your name" />
+          <button id="start">Continue</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="composer" class="chat-screen hidden">
+      <div class="chat-header">
+        <div class="chat-title"><span class="logo-green">Disguise</span><span class="logo-black">.AI</span></div>
+        <p class="chat-subtitle">Ready to chat</p>
+        <button id="settings-btn" class="settings-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Settings Modal -->
+      <div id="settings-modal" class="settings-modal hidden">
+        <div class="settings-content">
+          <div class="settings-header">
+            <h2>Settings</h2>
+            <button id="close-settings" class="close-btn">&times;</button>
+          </div>
+          <div class="settings-body">
+            
+            <!-- Profile Section -->
+            <div class="setting-group">
+              <label class="setting-label">Your Name</label>
+              <input type="text" id="settings-name" class="settings-input" placeholder="Enter your name" />
+            </div>
+
+            <div class="setting-group">
+              <label class="setting-label">Who do you usually text?</label>
+              <p class="setting-desc">Helps me understand your situations better</p>
+              <div class="settings-chips" id="who-chips">
+                <button data-value="crushes">Crushes</button>
+                <button data-value="dating-apps">Dating app matches</button>
+                <button data-value="exes">Exes</button>
+                <button data-value="friends">Friends</button>
+                <button data-value="new-people">New people</button>
+              </div>
+            </div>
+
+            <div class="setting-group">
+              <label class="setting-label">What do you struggle with?</label>
+              <p class="setting-desc">So I know where to help most</p>
+              <div class="settings-chips" id="struggle-chips">
+                <button data-value="starting-convos">Starting convos</button>
+                <button data-value="keeping-going">Keeping it going</button>
+                <button data-value="flirting">Flirting</button>
+                <button data-value="being-confident">Being confident</button>
+                <button data-value="not-being-dry">Not being dry</button>
+                <button data-value="reading-signals">Reading signals</button>
+              </div>
+            </div>
+
+            <div class="setting-group">
+              <label class="setting-label">Your personality</label>
+              <p class="setting-desc">Select all that apply</p>
+              <div class="settings-chips" id="personality-chips">
+                <button data-value="introvert">Introvert</button>
+                <button data-value="extrovert">Extrovert</button>
+                <button data-value="overthinker">Overthinker</button>
+                <button data-value="spontaneous">Spontaneous</button>
+                <button data-value="romantic">Romantic</button>
+                <button data-value="sarcastic">Sarcastic</button>
+                <button data-value="deep">Deep thinker</button>
+                <button data-value="funny">Class clown</button>
+              </div>
+            </div>
+
+            <div class="setting-group">
+              <label class="setting-label">About You</label>
+              <p class="setting-desc">Anything else I should know?</p>
+              <textarea id="settings-about" class="settings-textarea" placeholder="Your interests, what you're looking for, your dating situation..."></textarea>
+            </div>
+            
+            <div class="settings-divider"></div>
+            
+            <!-- Response Style -->
+            <div class="setting-group">
+              <label class="setting-label">Response Style</label>
+              <p class="setting-desc">How bold do you want your responses?</p>
+              <div class="temp-options">
+                <label class="temp-option">
+                  <input type="radio" name="temperature" value="normal" checked />
+                  <span class="temp-btn">Normal</span>
+                  <span class="temp-desc">Friendly & casual</span>
+                </label>
+                <label class="temp-option">
+                  <input type="radio" name="temperature" value="bold" />
+                  <span class="temp-btn">A Little Bold</span>
+                  <span class="temp-desc">Confident & direct</span>
+                </label>
+                <label class="temp-option">
+                  <input type="radio" name="temperature" value="super-bold" />
+                  <span class="temp-btn">Super Bold</span>
+                  <span class="temp-desc">Daring & assertive</span>
+                </label>
+                <label class="temp-option">
+                  <input type="radio" name="temperature" value="spicy" />
+                  <span class="temp-btn">Spicy 🌶️</span>
+                  <span class="temp-desc">Flirty & playful</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-divider"></div>
+
+            <!-- Communication Preferences -->
+            <div class="setting-group">
+              <label class="setting-label">Communication Style</label>
+
+              <div class="slider-group">
+                <div class="slider-label">
+                  <span>Message Length</span>
+                  <span id="length-value">Medium</span>
+                </div>
+                <input type="range" id="msg-length" min="1" max="3" value="2" class="style-slider" />
+                <div class="slider-labels"><span>Short</span><span>Long</span></div>
+              </div>
+
+              <div class="slider-group">
+                <div class="slider-label">
+                  <span>Emoji Usage</span>
+                  <span id="emoji-value">Sometimes</span>
+                </div>
+                <input type="range" id="emoji-usage" min="1" max="3" value="2" class="style-slider" />
+                <div class="slider-labels"><span>Never</span><span>Lots</span></div>
+              </div>
+
+              <div class="slider-group">
+                <div class="slider-label">
+                  <span>Flirtiness</span>
+                  <span id="flirt-value">Subtle</span>
+                </div>
+                <input type="range" id="flirtiness" min="1" max="3" value="1" class="style-slider" />
+                <div class="slider-labels"><span>None</span><span>Very</span></div>
+              </div>
+            </div>
+
+            <div class="settings-divider"></div>
+
+            <!-- Text Samples -->
+            <div class="setting-group">
+              <div class="samples-label">
+                <label class="setting-label" style="margin:0;">Your Texting Examples</label>
+                <span class="boost-badge">Boosts accuracy</span>
+              </div>
+              <p class="setting-desc">Paste examples of how you actually text so I can match your style</p>
+              <textarea id="settings-samples" class="settings-textarea" placeholder="Copy some of your real texts here:
+
+'lol yeah that was crazy'
+'wait no way, tell me everything'
+'haha you're so dumb i love it'"></textarea>
+            </div>
+            
+            <div class="settings-divider"></div>
+            
+            <!-- Preferences -->
+            <div class="setting-group">
+              <label class="setting-label">Preferences</label>
+              <div class="toggle-row">
+                <span>Sound Effects</span>
+                <label class="toggle">
+                  <input type="checkbox" id="sound-toggle" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="toggle-row">
+                <span>Haptic Feedback</span>
+                <label class="toggle">
+                  <input type="checkbox" id="haptic-toggle" checked />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+            
+            <div class="settings-divider"></div>
+            
+            <!-- Data & Privacy -->
+            <div class="setting-group">
+              <label class="setting-label">Data & Privacy</label>
+              <button id="clear-history" class="danger-btn">Clear Conversation History</button>
+              <button id="reset-profile" class="danger-btn outline">Reset Profile</button>
+            </div>
+            
+            <div class="settings-divider"></div>
+            
+            <!-- About -->
+            <div class="setting-group about-section">
+              <p class="app-version">Disguise.AI v1.0.0</p>
+              <p class="setting-desc">Made with ❤️ to help you connect</p>
+            </div>
+            
+          </div>
+          <div class="settings-footer">
+            <button id="save-settings" class="save-btn">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-messages" id="messages"></div>
+
+      <div class="chat-input-area">
+        <div class="input-controls">
+          <label class="image-btn">
+            <input id="image" type="file" accept="image/*" />
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+          </label>
+        </div>
+        <input id="message" type="text" placeholder="Message" class="message-input" />
+        <button id="send" class="send-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M16.6915026,12.4744748 L3.50612381,13.2599618 C3.19218622,13.2599618 3.03521743,13.4170592 3.03521743,13.5741566 L1.15159189,20.0151496 C0.8376543,20.8006365 0.99,21.89 1.77946707,22.52 C2.40,22.99 3.50612381,23.1 4.13399899,22.8429026 L21.714504,14.0454487 C22.6563168,13.5741566 23.1272231,12.6315722 22.9702544,11.6889879 L4.13399899,1.16151496 C3.34915502,0.9 2.40,0.9 1.77946707,1.4 C0.994623095,2.0 0.837654326,3.1 1.15159189,3.97788991 L3.03521743,10.4188829 C3.03521743,10.5759803 3.19218622,10.7330777 3.50612381,10.7330777 L16.6915026,11.5185646 C16.6915026,11.5185646 17.1624089,11.5185646 17.1624089,12.0 C17.1624089,12.4814354 16.6915026,12.4744748 16.6915026,12.4744748 Z"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div id="preview" class="preview hidden"></div>
+
+      <!-- Context Modal for Images -->
+      <div id="context-modal" class="context-modal hidden">
+        <div class="context-content">
+          <div class="context-header">
+            <h3>Quick context</h3>
+            <button id="skip-context" class="skip-btn">Skip</button>
+          </div>
+          <div class="context-body">
+            <div class="context-group">
+              <label>Who is this?</label>
+              <div class="context-options" id="who-options">
+                <button data-value="crush">Crush</button>
+                <button data-value="match">Dating app match</button>
+                <button data-value="ex">Ex</button>
+                <button data-value="friend">Friend</button>
+                <button data-value="stranger">Someone new</button>
+                <button data-value="other">Other</button>
+              </div>
+            </div>
+            <div class="context-group">
+              <label>What do you want?</label>
+              <div class="context-options" id="goal-options">
+                <button data-value="date">Get a date</button>
+                <button data-value="flirt">Flirt / keep it going</button>
+                <button data-value="respond">Just respond well</button>
+                <button data-value="closure">Closure</button>
+                <button data-value="impress">Impress them</button>
+                <button data-value="other">Other</button>
+              </div>
+            </div>
+          </div>
+          <button id="send-with-context" class="send-context-btn">Send</button>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+    "supabase": {
+        "url": "https://ppnswzypkrqztgcluoin.supabase.co",
+        "anonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBwbnN3enlwa3JxenRnY2x1b2luIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwMDk2MDIsImV4cCI6MjA4NTU4NTYwMn0.WvU8hO8C9edCCczxig1zBEjhaYW4BR1FhdelB1NQYjs"
+    },
+    "server": {
+        "baseURL": "http://192.168.1.64:3000"
+    },
+    "appGroup": "group.com.disguiseai.shared"
+}
