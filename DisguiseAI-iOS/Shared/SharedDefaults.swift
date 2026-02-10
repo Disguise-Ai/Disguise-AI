@@ -118,13 +118,38 @@ class SharedDefaults {
         set { defaults.set(newValue, forKey: "pendingSuggestion") }
     }
 
+    // MARK: - Trial & Premium
+    var trialStartDate: Date? {
+        get { defaults.object(forKey: "trialStartDate") as? Date }
+        set { defaults.set(newValue, forKey: "trialStartDate") }
+    }
+
+    var isPremium: Bool {
+        get { defaults.bool(forKey: "isPremium") }
+        set { defaults.set(newValue, forKey: "isPremium") }
+    }
+
+    var isTrialExpired: Bool {
+        if isPremium { return false }
+        guard let startDate = trialStartDate else { return false }
+        let daysSinceStart = Calendar.current.dateComponents([.day], from: startDate, to: Date()).day ?? 0
+        return daysSinceStart >= 7
+    }
+
+    var trialDaysRemaining: Int {
+        if isPremium { return 0 }
+        guard let startDate = trialStartDate else { return 7 }
+        let daysSinceStart = Calendar.current.dateComponents([.day], from: startDate, to: Date()).day ?? 0
+        return max(0, 7 - daysSinceStart)
+    }
+
     // MARK: - Clear All
     func clearAll() {
         let keys = ["userId", "userName", "hasVerifiedPhone", "phoneNumber", "supabaseUserId",
                     "hasCompletedOnboarding", "hasCompletedKeyboardSetup",
                     "responseStyle", "messageLength", "emojiUsage", "flirtiness", "selectedVibes",
                     "personality", "textSamples", "recentSuggestions", "pendingContext",
-                    "pendingSuggestion"]
+                    "pendingSuggestion", "trialStartDate", "isPremium"]
         keys.forEach { defaults.removeObject(forKey: $0) }
     }
 }

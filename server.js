@@ -485,6 +485,69 @@ app.delete('/api/chat/:userId', async (req, res) => {
   res.json({ success: true });
 });
 
+// Check trial status
+app.get('/api/trial/:userId', (req, res) => {
+  const { userId } = req.params;
+  const profile = profiles[userId];
+
+  if (!profile) {
+    // New user - start trial
+    return res.json({
+      isTrialActive: true,
+      daysRemaining: 7,
+      isPremium: false
+    });
+  }
+
+  // Check if user is premium (has paid)
+  if (profile.isPremium) {
+    return res.json({
+      isTrialActive: false,
+      daysRemaining: 0,
+      isPremium: true
+    });
+  }
+
+  // Calculate days since signup
+  const createdAt = new Date(profile.createdAt);
+  const now = new Date();
+  const daysSinceSignup = Math.floor((now - createdAt) / (1000 * 60 * 60 * 24));
+  const daysRemaining = Math.max(0, 7 - daysSinceSignup);
+  const isTrialActive = daysRemaining > 0;
+
+  res.json({
+    isTrialActive,
+    daysRemaining,
+    isPremium: false
+  });
+});
+
+// Upgrade to premium
+app.post('/api/upgrade', (req, res) => {
+  const { userId } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ error: 'userId required' });
+  }
+
+  if (!profiles[userId]) {
+    profiles[userId] = {
+      createdAt: new Date().toISOString(),
+      answers: [],
+      messages: [],
+      chatHistory: [],
+      style: {}
+    };
+  }
+
+  profiles[userId].isPremium = true;
+  profiles[userId].upgradedAt = new Date().toISOString();
+  saveProfiles();
+
+  console.log(`User ${userId} upgraded to premium`);
+  res.json({ success: true, isPremium: true });
+});
+
 app.post('/api/message', upload.single('image'), async (req, res) => {
   const {
     message = '',
@@ -501,6 +564,23 @@ app.post('/api/message', upload.single('image'), async (req, res) => {
 
   const msgNum = parseInt(messageCount) || 0;
   const profile = profiles[userId] || { answers: [], messages: [], textSamples: '', style: {} };
+
+  // Check trial status for non-premium users
+  let isTrialExpired = false;
+  if (!profile.isPremium && profile.createdAt) {
+    const createdAt = new Date(profile.createdAt);
+    const now = new Date();
+    const daysSinceSignup = Math.floor((now - createdAt) / (1000 * 60 * 60 * 24));
+    isTrialExpired = daysSinceSignup >= 7;
+  }
+
+  // If trial expired and they're trying to upload an image, reject
+  if (isTrialExpired && req.file) {
+    return res.json({
+      reply: "screenshot analysis is a premium feature. upgrade to keep getting personalized help with your convos",
+      trialExpired: true
+    });
+  }
 
   // Update profile with latest style preferences
   profile.style = { length: msgLength, emoji: emojiUsage, flirt: flirtiness };
@@ -630,6 +710,18 @@ rules:
 - the replies you suggest should sound like ${userName || 'them'}, not you
 - be real with them - if something seems off, say it
 - don't say "I think" or "In my opinion" - just say it`;
+  }
+
+  // If trial expired, give generic response instead
+  if (isTrialExpired) {
+    const genericResponses = [
+      "that's a tricky one. try being yourself and keep it casual. upgrade to premium for personalized suggestions that match your style",
+      "hmm i'd need to know more about your texting style to help properly. premium members get responses that actually sound like them",
+      "here's a general tip: keep it short, don't overthink it. want responses tailored to your vibe? check out premium",
+      "hard to give specific advice without knowing your style better. premium unlocks personalized suggestions based on how you actually text"
+    ];
+    const genericReply = genericResponses[Math.floor(Math.random() * genericResponses.length)];
+    return res.json({ reply: genericReply, trialExpired: true });
   }
 
   let ai = await generateResponse(prompt);

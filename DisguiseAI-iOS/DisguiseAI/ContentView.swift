@@ -191,6 +191,7 @@ struct EmailAuthView: View {
                 case .success(let user):
                     SharedDefaults.shared.supabaseUserId = user.id
                     SharedDefaults.shared.userId = user.id
+                    SharedDefaults.shared.trialStartDate = Date()  // Start 7-day trial
                     isLoading = false
                     onComplete()
 
@@ -250,6 +251,11 @@ struct EmailAuthView: View {
                             if let completed = profile["hasCompletedOnboarding"] as? Bool, completed {
                                 SharedDefaults.shared.hasCompletedOnboarding = true
                                 SharedDefaults.shared.hasCompletedKeyboardSetup = true  // Skip keyboard setup for returning users
+                            }
+
+                            // Restore premium status
+                            if let isPremium = profile["isPremium"] as? Bool, isPremium {
+                                SharedDefaults.shared.isPremium = true
                             }
                         }
 
@@ -663,6 +669,10 @@ struct ChatView: View {
     // Quick tap options
     @State private var showingOptions: [String] = []
 
+    // Trial & Premium
+    @State private var showPaywall = false
+    @State private var isTrialExpired = false
+
     // Option choices
     private let whoOptions = ["a crush", "dating app", "an ex", "just talking"]
     private let helpOptions = ["how to respond", "start the convo", "what to say next", "keep it going"]
@@ -745,10 +755,16 @@ struct ChatView: View {
                     VStack(spacing: 0) {
                         Divider()
                         HStack(spacing: 12) {
-                            Button(action: { showImagePicker = true }) {
+                            Button(action: {
+                                if SharedDefaults.shared.isTrialExpired && !SharedDefaults.shared.isPremium {
+                                    showPaywall = true
+                                } else {
+                                    showImagePicker = true
+                                }
+                            }) {
                                 Image(systemName: "camera.fill")
                                     .font(.system(size: 22))
-                                    .foregroundColor(.gray)
+                                    .foregroundColor(isTrialExpired ? .gray.opacity(0.5) : .gray)
                             }
 
                             HStack {
@@ -798,7 +814,34 @@ struct ChatView: View {
                 if !hasLoadedHistory {
                     hasLoadedHistory = true
                     loadChatHistory()
+                    checkTrialStatus()
                 }
+            }
+            .sheet(isPresented: $showPaywall) {
+                PaywallView(onUpgrade: {
+                    SharedDefaults.shared.isPremium = true
+                    isTrialExpired = false
+                    showPaywall = false
+                }, onDismiss: {
+                    showPaywall = false
+                })
+            }
+        }
+    }
+
+    private func checkTrialStatus() {
+        // Start trial if not started yet
+        if SharedDefaults.shared.trialStartDate == nil {
+            SharedDefaults.shared.trialStartDate = Date()
+        }
+
+        // Check if trial expired
+        isTrialExpired = SharedDefaults.shared.isTrialExpired
+
+        // Show paywall if trial just expired
+        if isTrialExpired && !SharedDefaults.shared.isPremium {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                showPaywall = true
             }
         }
     }
@@ -1517,6 +1560,141 @@ struct ScaleButtonStyle: ButtonStyle {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
             }
+    }
+}
+
+// MARK: - Paywall View
+struct PaywallView: View {
+    let onUpgrade: () -> Void
+    let onDismiss: () -> Void
+
+    @State private var isLoading = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Close button
+            HStack {
+                Spacer()
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 28))
+                        .foregroundColor(.gray.opacity(0.6))
+                }
+                .padding()
+            }
+
+            Spacer()
+
+            // Icon
+            Image(systemName: "sparkles")
+                .font(.system(size: 60))
+                .foregroundColor(.yellow)
+                .padding(.bottom, 20)
+
+            // Title
+            Text("Your free trial ended")
+                .font(.system(size: 28, weight: .bold))
+                .multilineTextAlignment(.center)
+
+            Text("Upgrade to keep the convo going")
+                .font(.system(size: 17))
+                .foregroundColor(.secondary)
+                .padding(.top, 4)
+
+            // Features
+            VStack(alignment: .leading, spacing: 16) {
+                FeatureRow(icon: "camera.fill", text: "Screenshot analysis")
+                FeatureRow(icon: "person.fill", text: "Personalized responses")
+                FeatureRow(icon: "text.bubble.fill", text: "Unlimited conversations")
+                FeatureRow(icon: "sparkles", text: "AI that sounds like you")
+            }
+            .padding(.top, 40)
+            .padding(.horizontal, 40)
+
+            Spacer()
+
+            // Pricing
+            VStack(spacing: 8) {
+                Text("$4.99/month")
+                    .font(.system(size: 32, weight: .bold))
+                Text("Cancel anytime")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.bottom, 20)
+
+            // Upgrade button
+            Button(action: handleUpgrade) {
+                if isLoading {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                } else {
+                    Text("Upgrade Now")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                }
+            }
+            .background(Color(red: 0.0, green: 0.48, blue: 1.0))
+            .cornerRadius(14)
+            .padding(.horizontal, 24)
+            .disabled(isLoading)
+
+            // Continue with limited
+            Button(action: onDismiss) {
+                Text("Continue with limited features")
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.top, 12)
+            .padding(.bottom, 40)
+        }
+    }
+
+    private func handleUpgrade() {
+        isLoading = true
+
+        // For now, just mark as premium (you'll integrate real payments later)
+        // In production, this would call StoreKit for in-app purchase
+        guard let userId = SharedDefaults.shared.userId ?? SharedDefaults.shared.supabaseUserId,
+              let url = URL(string: "\(ConfigManager.shared.serverBaseURL)/api/upgrade") else {
+            isLoading = false
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["userId": userId])
+
+        URLSession.shared.dataTask(with: request) { _, _, _ in
+            DispatchQueue.main.async {
+                isLoading = false
+                SharedDefaults.shared.isPremium = true
+                onUpgrade()
+            }
+        }.resume()
+    }
+}
+
+// MARK: - Feature Row
+struct FeatureRow: View {
+    let icon: String
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 18))
+                .foregroundColor(Color(red: 0.0, green: 0.48, blue: 1.0))
+                .frame(width: 24)
+            Text(text)
+                .font(.system(size: 16))
+            Spacer()
+        }
     }
 }
 
