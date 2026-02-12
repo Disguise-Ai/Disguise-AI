@@ -15,6 +15,7 @@
 		A1000010001 /* SupabaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000010000 /* SupabaseManager.swift */; };
 		A1000011001 /* ConfigManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000011000 /* ConfigManager.swift */; };
 		A1000012001 /* Config.json in Resources */ = {isa = PBXBuildFile; fileRef = A1000012000 /* Config.json */; };
+		A1000013001 /* StoreManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000013000 /* StoreManager.swift */; };
 		A4000003001 /* DisguiseKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A2000000000 /* DisguiseKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A4000004001 /* DisguiseShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A3000000000 /* DisguiseShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A2000001001 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000 /* KeyboardViewController.swift */; };
@@ -53,6 +54,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
+				A4000003001 /* DisguiseKeyboard.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -69,6 +71,7 @@
 		A1000010000 /* SupabaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseManager.swift; sourceTree = "<group>"; };
 		A1000011000 /* ConfigManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigManager.swift; sourceTree = "<group>"; };
 		A1000012000 /* Config.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Config.json; sourceTree = "<group>"; };
+		A1000013000 /* StoreManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreManager.swift; sourceTree = "<group>"; };
 		A2000000000 /* DisguiseKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = DisguiseKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A2000001000 /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
 		A2000002000 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -119,6 +122,7 @@
 				A1000001000 /* DisguiseAIApp.swift */,
 				A1000002000 /* ContentView.swift */,
 				A1000010000 /* SupabaseManager.swift */,
+				A1000013000 /* StoreManager.swift */,
 				A1000005000 /* Assets.xcassets */,
 			);
 			path = DisguiseAI;
@@ -178,6 +182,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				A4000001001 /* PBXTargetDependency */,
 			);
 			name = DisguiseAI;
 			productName = DisguiseAI;
@@ -298,6 +303,7 @@
 				A1000004001 /* SharedDefaults.swift in Sources */,
 				A1000010001 /* SupabaseManager.swift in Sources */,
 				A1000011001 /* ConfigManager.swift in Sources */,
+				A1000013001 /* StoreManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -469,6 +475,7 @@
 				DEVELOPMENT_TEAM = XYQ5F2KNM5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Disguise.AI needs access to your photos to read screenshots and provide smart response suggestions.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -499,6 +506,7 @@
 				DEVELOPMENT_TEAM = XYQ5F2KNM5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Disguise.AI needs access to your photos to read screenshots and provide smart response suggestions.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

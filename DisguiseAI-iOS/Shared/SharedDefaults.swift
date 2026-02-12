@@ -118,6 +118,85 @@ class SharedDefaults {
         set { defaults.set(newValue, forKey: "pendingSuggestion") }
     }
 
+    // MARK: - Local Chat History (for instant loading)
+    var localChatHistory: [[String: Any]] {
+        get {
+            guard let data = defaults.data(forKey: "localChatHistory"),
+                  let history = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+                return []
+            }
+            return history
+        }
+        set {
+            // Keep last 100 messages
+            let trimmed = Array(newValue.suffix(100))
+            if let data = try? JSONSerialization.data(withJSONObject: trimmed) {
+                defaults.set(data, forKey: "localChatHistory")
+            }
+        }
+    }
+
+    func appendChatMessage(text: String, isUser: Bool) {
+        var history = localChatHistory
+        history.append(["text": text, "isUser": isUser, "timestamp": Date().timeIntervalSince1970])
+        localChatHistory = history
+    }
+
+    func clearChatHistory() {
+        defaults.removeObject(forKey: "localChatHistory")
+    }
+
+    // MARK: - Conversation History (multiple conversations)
+    var savedConversations: [[String: Any]] {
+        get {
+            guard let data = defaults.data(forKey: "savedConversations"),
+                  let convos = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+                return []
+            }
+            return convos
+        }
+        set {
+            // Keep last 20 conversations
+            let trimmed = Array(newValue.suffix(20))
+            if let data = try? JSONSerialization.data(withJSONObject: trimmed) {
+                defaults.set(data, forKey: "savedConversations")
+            }
+        }
+    }
+
+    func saveCurrentConversation() {
+        let currentHistory = localChatHistory
+        guard !currentHistory.isEmpty else { return }
+
+        // Create conversation object
+        let conversation: [String: Any] = [
+            "id": UUID().uuidString,
+            "messages": currentHistory,
+            "createdAt": Date().timeIntervalSince1970,
+            "preview": (currentHistory.first?["text"] as? String) ?? "Conversation"
+        ]
+
+        var convos = savedConversations
+        convos.insert(conversation, at: 0)  // Add to beginning (newest first)
+        savedConversations = convos
+    }
+
+    func deleteConversation(id: String) {
+        var convos = savedConversations
+        convos.removeAll { ($0["id"] as? String) == id }
+        savedConversations = convos
+    }
+
+    func clearAllConversations() {
+        defaults.removeObject(forKey: "savedConversations")
+    }
+
+    // MARK: - Verified User (completed auth + has profile)
+    var isVerifiedUser: Bool {
+        get { defaults.bool(forKey: "isVerifiedUser") }
+        set { defaults.set(newValue, forKey: "isVerifiedUser") }
+    }
+
     // MARK: - Trial & Premium
     var trialStartDate: Date? {
         get { defaults.object(forKey: "trialStartDate") as? Date }
@@ -143,13 +222,30 @@ class SharedDefaults {
         return max(0, 7 - daysSinceStart)
     }
 
+    // MARK: - Trial Photo Limit
+    var trialPhotoUploads: Int {
+        get { defaults.integer(forKey: "trialPhotoUploads") }
+        set { defaults.set(newValue, forKey: "trialPhotoUploads") }
+    }
+
+    var canUploadPhoto: Bool {
+        if isPremium { return true }
+        return trialPhotoUploads < 3
+    }
+
+    var trialPhotosRemaining: Int {
+        if isPremium { return 999 }
+        return max(0, 3 - trialPhotoUploads)
+    }
+
     // MARK: - Clear All
     func clearAll() {
         let keys = ["userId", "userName", "hasVerifiedPhone", "phoneNumber", "supabaseUserId",
                     "hasCompletedOnboarding", "hasCompletedKeyboardSetup",
                     "responseStyle", "messageLength", "emojiUsage", "flirtiness", "selectedVibes",
                     "personality", "textSamples", "recentSuggestions", "pendingContext",
-                    "pendingSuggestion", "trialStartDate", "isPremium"]
+                    "pendingSuggestion", "trialStartDate", "isPremium", "localChatHistory",
+                    "isVerifiedUser", "savedConversations", "trialPhotoUploads"]
         keys.forEach { defaults.removeObject(forKey: $0) }
     }
 }

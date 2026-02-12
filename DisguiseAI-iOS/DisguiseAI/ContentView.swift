@@ -3,18 +3,14 @@ import UIKit
 import Photos
 
 struct ContentView: View {
-    @State private var hasVerifiedPhone = false
-    @State private var hasCompletedOnboarding = false
-    @State private var hasCompletedKeyboardSetup = false
-    @State private var isLoaded = false
+    // Load state immediately from SharedDefaults (synchronous, no lag)
+    @State private var hasVerifiedPhone = SharedDefaults.shared.hasVerifiedPhone
+    @State private var hasCompletedOnboarding = SharedDefaults.shared.hasCompletedOnboarding
+    @State private var hasCompletedKeyboardSetup = SharedDefaults.shared.hasCompletedKeyboardSetup
 
     var body: some View {
         Group {
-            if !isLoaded {
-                // Loading screen
-                Color.black
-                    .ignoresSafeArea()
-            } else if !hasVerifiedPhone {
+            if !hasVerifiedPhone {
                 EmailAuthView(onComplete: {
                     SharedDefaults.shared.hasVerifiedPhone = true
                     hasVerifiedPhone = true
@@ -41,19 +37,13 @@ struct ContentView: View {
             } else {
                 ChatView(onReset: {
                     SharedDefaults.shared.clearAll()
+                    SharedDefaults.shared.clearChatHistory()
                     UserDefaults.standard.removeObject(forKey: "supabase_access_token")
                     hasVerifiedPhone = false
                     hasCompletedOnboarding = false
                     hasCompletedKeyboardSetup = false
                 })
             }
-        }
-        .onAppear {
-            // Load saved state
-            hasVerifiedPhone = SharedDefaults.shared.hasVerifiedPhone
-            hasCompletedOnboarding = SharedDefaults.shared.hasCompletedOnboarding
-            hasCompletedKeyboardSetup = SharedDefaults.shared.hasCompletedKeyboardSetup
-            isLoaded = true
         }
     }
 }
@@ -192,6 +182,7 @@ struct EmailAuthView: View {
                     SharedDefaults.shared.supabaseUserId = user.id
                     SharedDefaults.shared.userId = user.id
                     SharedDefaults.shared.trialStartDate = Date()  // Start 7-day trial
+                    SharedDefaults.shared.isVerifiedUser = true     // Mark as verified
                     isLoading = false
                     onComplete()
 
@@ -201,65 +192,76 @@ struct EmailAuthView: View {
                 }
             }
         } else {
-            // Sign in - fetch their saved profile
+            // Sign in - returning user, skip all onboarding
             SupabaseManager.shared.signIn(email: email, password: password) { result in
                 switch result {
                 case .success(let user):
                     SharedDefaults.shared.supabaseUserId = user.id
                     SharedDefaults.shared.userId = user.id
 
-                    // Try to load their saved profile from server
-                    SupabaseManager.shared.fetchUserProfile(userId: user.id) { profileResult in
-                        isLoading = false
+                    // Returning user - they already went through onboarding once
+                    // Skip everything and go straight to chat
+                    SharedDefaults.shared.isVerifiedUser = true
+                    SharedDefaults.shared.hasCompletedOnboarding = true
+                    SharedDefaults.shared.hasCompletedKeyboardSetup = true
 
-                        if case .success(let profile) = profileResult {
-                            // Restore their settings
-                            if let name = profile["name"] as? String, !name.isEmpty {
-                                SharedDefaults.shared.userName = name
-                            }
-                            if let vibes = profile["personality"] as? [String] {
-                                SharedDefaults.shared.selectedVibes = vibes
-                                SharedDefaults.shared.personality = vibes
-                            }
-                            if let style = profile["responseStyle"] as? String {
-                                SharedDefaults.shared.responseStyle = style
-                            }
-                            if let length = profile["messageLength"] as? Int {
-                                SharedDefaults.shared.messageLength = String(length)
-                            }
-                            if let emoji = profile["emojiUsage"] as? Int {
-                                SharedDefaults.shared.emojiUsage = String(emoji)
-                            }
-                            if let flirt = profile["flirtiness"] as? Int {
-                                SharedDefaults.shared.flirtiness = String(flirt)
-                            }
-                            if let samples = profile["textSamples"] as? String {
-                                SharedDefaults.shared.textSamples = samples
-                            }
+                    isLoading = false
+                    onComplete()  // Continue immediately - don't wait for profile!
 
-                            // Restore deep personality settings
-                            if let val = profile["noReplyThought"] as? String { UserDefaults.standard.set(val, forKey: "noReplyThought") }
-                            if let val = profile["whenYouLikeSomeone"] as? String { UserDefaults.standard.set(val, forKey: "whenYouLikeSomeone") }
-                            if let val = profile["whatKillsConvos"] as? String { UserDefaults.standard.set(val, forKey: "whatKillsConvos") }
-                            if let val = profile["quietConvoResponse"] as? String { UserDefaults.standard.set(val, forKey: "quietConvoResponse") }
-                            if let val = profile["biggestFear"] as? String { UserDefaults.standard.set(val, forKey: "biggestFear") }
-                            if let val = profile["howThingsEnd"] as? String { UserDefaults.standard.set(val, forKey: "howThingsEnd") }
-                            if let val = profile["confidenceLevel"] as? String { UserDefaults.standard.set(val, forKey: "confidenceLevel") }
-                            if let val = profile["whatYouWant"] as? String { UserDefaults.standard.set(val, forKey: "whatYouWant") }
+                    // Load profile in background (fire and forget)
+                    DispatchQueue.global(qos: .background).async {
+                        SupabaseManager.shared.fetchUserProfile(userId: user.id) { profileResult in
+                            if case .success(let profile) = profileResult {
+                                DispatchQueue.main.async {
+                                    // Restore their settings silently
+                                    if let name = profile["name"] as? String, !name.isEmpty {
+                                        SharedDefaults.shared.userName = name
+                                    }
+                                    if let vibes = profile["personality"] as? [String] {
+                                        SharedDefaults.shared.selectedVibes = vibes
+                                        SharedDefaults.shared.personality = vibes
+                                    }
+                                    if let style = profile["responseStyle"] as? String {
+                                        SharedDefaults.shared.responseStyle = style
+                                    }
+                                    if let length = profile["messageLength"] as? Int {
+                                        SharedDefaults.shared.messageLength = String(length)
+                                    }
+                                    if let emoji = profile["emojiUsage"] as? Int {
+                                        SharedDefaults.shared.emojiUsage = String(emoji)
+                                    }
+                                    if let flirt = profile["flirtiness"] as? Int {
+                                        SharedDefaults.shared.flirtiness = String(flirt)
+                                    }
+                                    if let samples = profile["textSamples"] as? String {
+                                        SharedDefaults.shared.textSamples = samples
+                                    }
 
-                            // Check if they completed onboarding before - if so, skip both onboarding and keyboard setup
-                            if let completed = profile["hasCompletedOnboarding"] as? Bool, completed {
-                                SharedDefaults.shared.hasCompletedOnboarding = true
-                                SharedDefaults.shared.hasCompletedKeyboardSetup = true  // Skip keyboard setup for returning users
-                            }
+                                    // Restore deep personality settings
+                                    if let val = profile["noReplyThought"] as? String { UserDefaults.standard.set(val, forKey: "noReplyThought") }
+                                    if let val = profile["whenYouLikeSomeone"] as? String { UserDefaults.standard.set(val, forKey: "whenYouLikeSomeone") }
+                                    if let val = profile["whatKillsConvos"] as? String { UserDefaults.standard.set(val, forKey: "whatKillsConvos") }
+                                    if let val = profile["quietConvoResponse"] as? String { UserDefaults.standard.set(val, forKey: "quietConvoResponse") }
+                                    if let val = profile["biggestFear"] as? String { UserDefaults.standard.set(val, forKey: "biggestFear") }
+                                    if let val = profile["howThingsEnd"] as? String { UserDefaults.standard.set(val, forKey: "howThingsEnd") }
+                                    if let val = profile["confidenceLevel"] as? String { UserDefaults.standard.set(val, forKey: "confidenceLevel") }
+                                    if let val = profile["whatYouWant"] as? String { UserDefaults.standard.set(val, forKey: "whatYouWant") }
 
-                            // Restore premium status
-                            if let isPremium = profile["isPremium"] as? Bool, isPremium {
-                                SharedDefaults.shared.isPremium = true
+                                    // Restore premium status
+                                    if let isPremium = profile["isPremium"] as? Bool, isPremium {
+                                        SharedDefaults.shared.isPremium = true
+                                    }
+
+                                    // Restore trial start date if exists
+                                    if let trialStart = profile["trialStartDate"] as? String {
+                                        let formatter = ISO8601DateFormatter()
+                                        if let date = formatter.date(from: trialStart) {
+                                            SharedDefaults.shared.trialStartDate = date
+                                        }
+                                    }
+                                }
                             }
                         }
-
-                        onComplete()
                     }
 
                 case .failure(let error):
@@ -277,7 +279,6 @@ struct OnboardingView: View {
 
     @State private var userName = ""
     @State private var selectedVibes: Set<String> = []
-    @State private var isLoading = false
 
     let vibeOptions = ["Confident", "Funny", "Flirty", "Chill", "Mysterious", "Bold", "Witty", "Charming", "Playful", "Direct"]
 
@@ -356,22 +357,15 @@ struct OnboardingView: View {
             // Continue button
             VStack(spacing: 16) {
                 Button(action: completeOnboarding) {
-                    if isLoading {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                    } else {
-                        Text("Continue")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                    }
+                    Text("Continue")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
                 }
                 .background(selectedVibes.isEmpty ? Color.gray : Color(red: 0.13, green: 0.77, blue: 0.37))
                 .cornerRadius(12)
-                .disabled(selectedVibes.isEmpty || isLoading)
+                .disabled(selectedVibes.isEmpty)
             }
             .padding()
         }
@@ -380,28 +374,34 @@ struct OnboardingView: View {
     private func completeOnboarding() {
         guard !selectedVibes.isEmpty else { return }
 
-        isLoading = true
-
-        // Save locally
+        // Save locally FIRST (instant - no waiting)
         SharedDefaults.shared.userName = userName
         SharedDefaults.shared.selectedVibes = Array(selectedVibes)
         SharedDefaults.shared.personality = Array(selectedVibes)
+        SharedDefaults.shared.hasCompletedOnboarding = true
 
         // Use Supabase user ID if available, otherwise generate one
         let userId = SharedDefaults.shared.supabaseUserId ?? UUID().uuidString.prefix(8).lowercased()
         SharedDefaults.shared.userId = String(userId)
 
-        // Save to server so AI can learn their style
-        SupabaseManager.shared.saveUserProfile(
-            userId: String(userId),
-            email: nil,
-            name: userName.isEmpty ? nil : userName,
-            vibes: Array(selectedVibes)
-        ) { _ in
-            // Continue regardless of server response
-            SharedDefaults.shared.hasCompletedOnboarding = true
-            isLoading = false
-            onComplete()
+        // Continue immediately - don't wait for server!
+        onComplete()
+
+        // Sync to server in background (fire and forget)
+        DispatchQueue.global(qos: .background).async {
+            SupabaseManager.shared.saveUserProfile(
+                userId: String(userId),
+                email: nil,
+                name: userName.isEmpty ? nil : userName,
+                vibes: Array(selectedVibes)
+            ) { _ in }
+
+            let settings: [String: Any] = [
+                "hasCompletedOnboarding": true,
+                "name": userName,
+                "personality": Array(selectedVibes)
+            ]
+            SupabaseManager.shared.updateUserSettings(userId: String(userId), settings: settings) { _ in }
         }
     }
 }
@@ -413,6 +413,7 @@ struct KeyboardSetupView: View {
 
     @State private var isKeyboardEnabled = false
     @State private var hasPhotoAccess = false
+    @State private var showKeyboardInstructions = false
     @Environment(\.scenePhase) var scenePhase
 
     var body: some View {
@@ -486,18 +487,18 @@ struct KeyboardSetupView: View {
                 SetupStep(
                     number: "2",
                     icon: "keyboard",
-                    title: "Enable Keyboard",
-                    description: "Settings → General → Keyboard → Keyboards → Disguise",
+                    title: "Add Disguise Keyboard",
+                    description: "Tap button below → Add New Keyboard → Disguise",
                     isComplete: isKeyboardEnabled,
-                    buttonTitle: isKeyboardEnabled ? nil : "Open Settings",
-                    action: openKeyboardSettings
+                    buttonTitle: isKeyboardEnabled ? nil : "Add Keyboard",
+                    action: { showKeyboardInstructions = true }
                 )
 
                 SetupStep(
                     number: "3",
                     icon: "hand.tap",
                     title: "Allow Full Access",
-                    description: "Tap Disguise keyboard → Enable Full Access",
+                    description: "Tap Disguise → Enable 'Allow Full Access'",
                     isComplete: false,
                     buttonTitle: nil,
                     action: nil
@@ -554,6 +555,11 @@ struct KeyboardSetupView: View {
                 checkPhotoAccess()
             }
         }
+        .sheet(isPresented: $showKeyboardInstructions) {
+            KeyboardInstructionsSheet(onOpenSettings: openKeyboardSettings, onDismiss: {
+                showKeyboardInstructions = false
+            })
+        }
     }
 
     private func checkKeyboardEnabled() {
@@ -578,10 +584,113 @@ struct KeyboardSetupView: View {
     }
 
     private func openKeyboardSettings() {
-        if let url = URL(string: "App-prefs:General&path=Keyboard/KEYBOARDS") {
+        // Try multiple URL schemes to open keyboard settings
+        let urls = [
+            "App-prefs:General&path=Keyboard/KEYBOARDS",
+            "App-Prefs:root=General&path=Keyboard/KEYBOARDS",
+            "prefs:root=General&path=Keyboard/KEYBOARDS",
+            UIApplication.openSettingsURLString
+        ]
+
+        for urlString in urls {
+            if let url = URL(string: urlString), UIApplication.shared.canOpenURL(url) {
+                UIApplication.shared.open(url)
+                return
+            }
+        }
+
+        // Fallback to general settings
+        if let url = URL(string: UIApplication.openSettingsURLString) {
             UIApplication.shared.open(url)
-        } else if let url = URL(string: UIApplication.openSettingsURLString) {
-            UIApplication.shared.open(url)
+        }
+    }
+}
+
+// MARK: - Keyboard Instructions Sheet
+struct KeyboardInstructionsSheet: View {
+    let onOpenSettings: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 24) {
+                // Header image
+                Image(systemName: "keyboard.badge.ellipsis")
+                    .font(.system(size: 60))
+                    .foregroundColor(Color(red: 0.0, green: 0.48, blue: 1.0))
+                    .padding(.top, 20)
+
+                Text("Enable Disguise Keyboard")
+                    .font(.system(size: 24, weight: .bold))
+
+                // Step by step instructions
+                VStack(alignment: .leading, spacing: 20) {
+                    InstructionRow(number: "1", text: "Tap 'Open Settings' below")
+                    InstructionRow(number: "2", text: "Tap 'Keyboards'")
+                    InstructionRow(number: "3", text: "Tap 'Add New Keyboard...'")
+                    InstructionRow(number: "4", text: "Find and tap 'Disguise'")
+                    InstructionRow(number: "5", text: "Tap 'Disguise' again")
+                    InstructionRow(number: "6", text: "Enable 'Allow Full Access'")
+                }
+                .padding(.horizontal, 24)
+
+                Spacer()
+
+                // Open Settings button
+                Button(action: {
+                    onOpenSettings()
+                }) {
+                    HStack {
+                        Image(systemName: "gear")
+                        Text("Open Settings")
+                    }
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 54)
+                    .background(Color(red: 0.0, green: 0.48, blue: 1.0))
+                    .cornerRadius(14)
+                }
+                .padding(.horizontal, 24)
+
+                Text("Come back here when you're done!")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 30)
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        onDismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Instruction Row
+struct InstructionRow: View {
+    let number: String
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(Color(red: 0.0, green: 0.48, blue: 1.0))
+                    .frame(width: 28, height: 28)
+                Text(number)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.white)
+            }
+
+            Text(text)
+                .font(.system(size: 16))
+                .foregroundColor(.primary)
+
+            Spacer()
         }
     }
 }
@@ -673,6 +782,13 @@ struct ChatView: View {
     @State private var showPaywall = false
     @State private var isTrialExpired = false
 
+    // Conversation history
+    @State private var showHistory = false
+
+    // Session persistence (5 minutes)
+    @Environment(\.scenePhase) var scenePhase
+    @State private var lastActiveTime: Date = Date()
+
     // Option choices
     private let whoOptions = ["a crush", "dating app", "an ex", "just talking"]
     private let helpOptions = ["how to respond", "start the convo", "what to say next", "keep it going"]
@@ -758,13 +874,16 @@ struct ChatView: View {
                             Button(action: {
                                 if SharedDefaults.shared.isTrialExpired && !SharedDefaults.shared.isPremium {
                                     showPaywall = true
+                                } else if !SharedDefaults.shared.canUploadPhoto {
+                                    // Trial user hit 3 photo limit
+                                    showPaywall = true
                                 } else {
                                     showImagePicker = true
                                 }
                             }) {
                                 Image(systemName: "camera.fill")
                                     .font(.system(size: 22))
-                                    .foregroundColor(isTrialExpired ? .gray.opacity(0.5) : .gray)
+                                    .foregroundColor((isTrialExpired || !SharedDefaults.shared.canUploadPhoto) ? .gray.opacity(0.5) : .gray)
                             }
 
                             HStack {
@@ -791,12 +910,74 @@ struct ChatView: View {
             .navigationTitle("Disguise.AI")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    // Only show conversation history for premium users
+                    if SharedDefaults.shared.isPremium {
+                        Button(action: { showHistory = true }) {
+                            Image(systemName: "line.3.horizontal")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(.gray)
+                        }
+                    } else {
+                        // Trial users see locked icon that prompts upgrade
+                        Button(action: { showPaywall = true }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 12))
+                                Image(systemName: "line.3.horizontal")
+                                    .font(.system(size: 16, weight: .medium))
+                            }
+                            .foregroundColor(.gray.opacity(0.5))
+                        }
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: { showSettings = true }) {
                         Image(systemName: "gearshape.fill")
                             .foregroundColor(.gray)
                     }
                 }
+            }
+            .sheet(isPresented: $showHistory) {
+                ConversationHistoryView(
+                    messages: messages,
+                    onNewChat: {
+                        // Save current conversation to history first
+                        if !messages.isEmpty {
+                            SharedDefaults.shared.saveCurrentConversation()
+                        }
+                        // Clear current conversation and start fresh
+                        messages.removeAll()
+                        SharedDefaults.shared.clearChatHistory()
+                        conversationStep = 3  // Skip onboarding for existing users
+                        showHistory = false
+                        // Start new conversation
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            showWelcomeBackMessage()
+                        }
+                    },
+                    onLoadConversation: { savedMessages in
+                        // Save current conversation first if it has messages
+                        if !messages.isEmpty {
+                            SharedDefaults.shared.saveCurrentConversation()
+                        }
+                        // Load the selected conversation
+                        messages.removeAll()
+                        SharedDefaults.shared.clearChatHistory()
+                        for item in savedMessages {
+                            if let text = item["text"] as? String,
+                               let isUser = item["isUser"] as? Bool {
+                                messages.append(ChatMessage(text: text, isUser: isUser))
+                                SharedDefaults.shared.appendChatMessage(text: text, isUser: isUser)
+                            }
+                        }
+                        conversationStep = 3
+                        showHistory = false
+                    },
+                    onDismiss: {
+                        showHistory = false
+                    }
+                )
             }
             .sheet(isPresented: $showSettings) {
                 SettingsView(onReset: onReset)
@@ -815,6 +996,47 @@ struct ChatView: View {
                     hasLoadedHistory = true
                     loadChatHistory()
                     checkTrialStatus()
+                }
+                // Restore last active time
+                lastActiveTime = Date()
+            }
+            .onChange(of: scenePhase) { phase in
+                switch phase {
+                case .active:
+                    // App came back to foreground
+                    let timeSinceLastActive = Date().timeIntervalSince(lastActiveTime)
+                    let fiveMinutes: TimeInterval = 5 * 60
+
+                    if timeSinceLastActive < fiveMinutes {
+                        // Within 5 minutes - keep current state, user picks up where they left off
+                        print("Resuming session - \(Int(timeSinceLastActive))s since last active")
+                        // Restore any pending input text
+                        if inputText.isEmpty, let pendingText = UserDefaults.standard.string(forKey: "pendingInputText"), !pendingText.isEmpty {
+                            inputText = pendingText
+                            UserDefaults.standard.removeObject(forKey: "pendingInputText")
+                        }
+                    } else {
+                        // More than 5 minutes - could refresh or show welcome back
+                        print("Session expired - \(Int(timeSinceLastActive))s since last active")
+                        // Clear any stale pending input
+                        UserDefaults.standard.removeObject(forKey: "pendingInputText")
+                        // Reload chat history from storage if needed
+                        if messages.isEmpty {
+                            loadChatHistory()
+                        }
+                    }
+                    lastActiveTime = Date()
+
+                case .inactive, .background:
+                    // App going to background - save state
+                    lastActiveTime = Date()
+                    // Save current input text if any
+                    if !inputText.isEmpty {
+                        UserDefaults.standard.set(inputText, forKey: "pendingInputText")
+                    }
+
+                @unknown default:
+                    break
                 }
             }
             .sheet(isPresented: $showPaywall) {
@@ -847,14 +1069,50 @@ struct ChatView: View {
     }
 
     private func loadChatHistory() {
-        guard let userId = SharedDefaults.shared.userId ?? SharedDefaults.shared.supabaseUserId else {
-            loadInitialMessage()
+        // First, load local history instantly (no network delay)
+        let localHistory = SharedDefaults.shared.localChatHistory
+        if !localHistory.isEmpty {
+            for item in localHistory {
+                if let text = item["text"] as? String,
+                   let isUser = item["isUser"] as? Bool {
+                    messages.append(ChatMessage(text: text, isUser: isUser))
+                }
+            }
+            // User has history, skip onboarding questions
+            conversationStep = 3
+
+            // Sync with server in background (don't block UI)
+            syncWithServerInBackground()
             return
         }
 
-        // Try to load chat history from server
-        guard let url = URL(string: "\(ConfigManager.shared.serverBaseURL)/api/chat/\(userId)") else {
+        // No local history - check if this is a verified returning user
+        if SharedDefaults.shared.isVerifiedUser {
+            // They've used the app before, try to get their history from server
+            fetchServerHistory { success in
+                if !success {
+                    // No server history, show welcome back message
+                    showWelcomeBackMessage()
+                }
+            }
+        } else {
+            // New user, show onboarding
             loadInitialMessage()
+        }
+    }
+
+    private func syncWithServerInBackground() {
+        guard let userId = SharedDefaults.shared.userId ?? SharedDefaults.shared.supabaseUserId,
+              let url = URL(string: "\(ConfigManager.shared.serverBaseURL)/api/chat/\(userId)") else { return }
+
+        // Sync silently in background - don't update UI since we already have local data
+        URLSession.shared.dataTask(with: url).resume()
+    }
+
+    private func fetchServerHistory(completion: @escaping (Bool) -> Void) {
+        guard let userId = SharedDefaults.shared.userId ?? SharedDefaults.shared.supabaseUserId,
+              let url = URL(string: "\(ConfigManager.shared.serverBaseURL)/api/chat/\(userId)") else {
+            completion(false)
             return
         }
 
@@ -863,21 +1121,31 @@ struct ChatView: View {
                 if let data = data,
                    let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let history = json["chatHistory"] as? [[String: Any]], !history.isEmpty {
-                    // Load saved messages
+                    // Load messages from server
                     for item in history {
                         if let text = item["text"] as? String,
                            let isUser = item["isUser"] as? Bool {
                             messages.append(ChatMessage(text: text, isUser: isUser))
+                            // Also save to local storage
+                            SharedDefaults.shared.appendChatMessage(text: text, isUser: isUser)
                         }
                     }
-                    // User has history, skip onboarding questions
                     conversationStep = 3
+                    completion(true)
                 } else {
-                    // No history, show initial message
-                    loadInitialMessage()
+                    completion(false)
                 }
             }
         }.resume()
+    }
+
+    private func showWelcomeBackMessage() {
+        let name = SharedDefaults.shared.userName ?? "there"
+        let welcomeBack = "welcome back \(name)! send me a screenshot or tell me what's going on"
+        messages.append(ChatMessage(text: welcomeBack, isUser: false))
+        SharedDefaults.shared.appendChatMessage(text: welcomeBack, isUser: false)
+        saveChatMessage(welcomeBack, isUser: false)
+        conversationStep = 3
     }
 
     private func loadInitialMessage() {
@@ -889,13 +1157,13 @@ struct ChatView: View {
         messages.append(ChatMessage(text: greeting, isUser: false))
         saveChatMessage(greeting, isUser: false)
 
-        // Show typing indicator for 3 seconds before second message
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        // Show typing indicator briefly then ask first question
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             isLoading = true
         }
 
-        // Ask first question after 3 seconds with typing indicator
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+        // Ask first question after 1.5 seconds (faster, less laggy feel)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             isLoading = false
             let question1 = "who you tryna text rn? like is it someone from an app, a crush, someone you just started talking to?"
             messages.append(ChatMessage(text: question1, isUser: false))
@@ -905,6 +1173,10 @@ struct ChatView: View {
     }
 
     private func saveChatMessage(_ text: String, isUser: Bool) {
+        // Save locally first (instant)
+        SharedDefaults.shared.appendChatMessage(text: text, isUser: isUser)
+
+        // Then sync to server in background
         guard let userId = SharedDefaults.shared.userId ?? SharedDefaults.shared.supabaseUserId,
               let url = URL(string: "\(ConfigManager.shared.serverBaseURL)/api/chat") else { return }
 
@@ -989,6 +1261,11 @@ struct ChatView: View {
     }
 
     private func startImageContextFlow(_ image: UIImage) {
+        // Track photo upload for trial users
+        if !SharedDefaults.shared.isPremium {
+            SharedDefaults.shared.trialPhotoUploads += 1
+        }
+
         // Store the image and show it instantly
         pendingImage = image
         messages.append(ChatMessage(text: "", isUser: true, image: image))
@@ -1199,6 +1476,9 @@ struct SettingsView: View {
     @State private var confidenceLevel: String = UserDefaults.standard.string(forKey: "confidenceLevel") ?? ""
     @State private var whatYouWant: String = UserDefaults.standard.string(forKey: "whatYouWant") ?? ""
 
+    // Subscription
+    @State private var showSubscription = false
+
     var body: some View {
         NavigationView {
             Form {
@@ -1373,6 +1653,37 @@ struct SettingsView: View {
                     Text("Keyboard")
                 }
 
+                // MARK: - Subscription
+                Section {
+                    Button(action: { showSubscription = true }) {
+                        HStack {
+                            Image(systemName: "sparkles")
+                                .foregroundColor(.yellow)
+                            Text(SharedDefaults.shared.isPremium ? "Premium Active" : "Upgrade to Premium")
+                                .foregroundColor(.primary)
+                            Spacer()
+                            if SharedDefaults.shared.isPremium {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                            } else {
+                                Text("$9.99/mo")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Image(systemName: "chevron.right")
+                                    .foregroundColor(.gray)
+                                    .font(.caption)
+                            }
+                        }
+                    }
+
+                    // Trial countdown - show prominently for non-premium users
+                    if !SharedDefaults.shared.isPremium {
+                        TrialCountdownView()
+                    }
+                } header: {
+                    Text("Subscription")
+                }
+
                 // MARK: - Data
                 Section {
                     Button("Reset All Data", role: .destructive) {
@@ -1393,6 +1704,17 @@ struct SettingsView: View {
                     Button("Save") { saveSettings() }
                         .fontWeight(.semibold)
                 }
+            }
+            .sheet(isPresented: $showSubscription) {
+                PaywallView(
+                    onUpgrade: {
+                        SharedDefaults.shared.isPremium = true
+                        showSubscription = false
+                    },
+                    onDismiss: {
+                        showSubscription = false
+                    }
+                )
             }
         }
     }
@@ -1568,7 +1890,29 @@ struct PaywallView: View {
     let onUpgrade: () -> Void
     let onDismiss: () -> Void
 
-    @State private var isLoading = false
+    @StateObject private var storeManager = StoreManager.shared
+    @State private var showError = false
+
+    private var paywallTitle: String {
+        if !SharedDefaults.shared.canUploadPhoto {
+            return "You've used all 3 screenshots"
+        } else if SharedDefaults.shared.isTrialExpired {
+            return "Your free trial ended"
+        } else {
+            return "Unlock Premium"
+        }
+    }
+
+    private var paywallSubtitle: String {
+        if !SharedDefaults.shared.canUploadPhoto {
+            return "Upgrade for unlimited screenshot analysis and personalized responses"
+        } else if SharedDefaults.shared.isTrialExpired {
+            return "Upgrade to keep the convo going"
+        } else {
+            let photosLeft = SharedDefaults.shared.trialPhotosRemaining
+            return "Trial: \(photosLeft) screenshot\(photosLeft == 1 ? "" : "s") left, basic responses only"
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1591,22 +1935,24 @@ struct PaywallView: View {
                 .foregroundColor(.yellow)
                 .padding(.bottom, 20)
 
-            // Title
-            Text("Your free trial ended")
+            // Title - dynamic based on what limit they hit
+            Text(paywallTitle)
                 .font(.system(size: 28, weight: .bold))
                 .multilineTextAlignment(.center)
 
-            Text("Upgrade to keep the convo going")
+            Text(paywallSubtitle)
                 .font(.system(size: 17))
                 .foregroundColor(.secondary)
                 .padding(.top, 4)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 20)
 
-            // Features
+            // Features - show what they're missing
             VStack(alignment: .leading, spacing: 16) {
-                FeatureRow(icon: "camera.fill", text: "Screenshot analysis")
-                FeatureRow(icon: "person.fill", text: "Personalized responses")
-                FeatureRow(icon: "text.bubble.fill", text: "Unlimited conversations")
-                FeatureRow(icon: "sparkles", text: "AI that sounds like you")
+                FeatureRow(icon: "camera.fill", text: "Unlimited screenshots", isLocked: !SharedDefaults.shared.canUploadPhoto)
+                FeatureRow(icon: "person.fill", text: "Personalized responses", isLocked: true)
+                FeatureRow(icon: "clock.arrow.circlepath", text: "Conversation history", isLocked: true)
+                FeatureRow(icon: "sparkles", text: "AI that sounds like you", isLocked: true)
             }
             .padding(.top, 40)
             .padding(.horizontal, 40)
@@ -1615,7 +1961,7 @@ struct PaywallView: View {
 
             // Pricing
             VStack(spacing: 8) {
-                Text("$4.99/month")
+                Text(storeManager.priceString)
                     .font(.system(size: 32, weight: .bold))
                 Text("Cancel anytime")
                     .font(.subheadline)
@@ -1623,9 +1969,19 @@ struct PaywallView: View {
             }
             .padding(.bottom, 20)
 
+            // Error message
+            if let error = storeManager.errorMessage {
+                Text(error)
+                    .font(.system(size: 14))
+                    .foregroundColor(.red)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 12)
+            }
+
             // Upgrade button
             Button(action: handleUpgrade) {
-                if isLoading {
+                if storeManager.isLoading {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                         .frame(maxWidth: .infinity)
@@ -1641,7 +1997,15 @@ struct PaywallView: View {
             .background(Color(red: 0.0, green: 0.48, blue: 1.0))
             .cornerRadius(14)
             .padding(.horizontal, 24)
-            .disabled(isLoading)
+            .disabled(storeManager.isLoading)
+
+            // Restore purchases
+            Button(action: handleRestore) {
+                Text("Restore Purchases")
+                    .font(.system(size: 14))
+                    .foregroundColor(.blue)
+            }
+            .padding(.top, 12)
 
             // Continue with limited
             Button(action: onDismiss) {
@@ -1649,34 +2013,32 @@ struct PaywallView: View {
                     .font(.system(size: 14))
                     .foregroundColor(.secondary)
             }
-            .padding(.top, 12)
+            .padding(.top, 8)
             .padding(.bottom, 40)
+        }
+        .onAppear {
+            Task {
+                await storeManager.loadProducts()
+            }
         }
     }
 
     private func handleUpgrade() {
-        isLoading = true
-
-        // For now, just mark as premium (you'll integrate real payments later)
-        // In production, this would call StoreKit for in-app purchase
-        guard let userId = SharedDefaults.shared.userId ?? SharedDefaults.shared.supabaseUserId,
-              let url = URL(string: "\(ConfigManager.shared.serverBaseURL)/api/upgrade") else {
-            isLoading = false
-            return
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: ["userId": userId])
-
-        URLSession.shared.dataTask(with: request) { _, _, _ in
-            DispatchQueue.main.async {
-                isLoading = false
-                SharedDefaults.shared.isPremium = true
+        Task {
+            let success = await storeManager.purchase()
+            if success {
                 onUpgrade()
             }
-        }.resume()
+        }
+    }
+
+    private func handleRestore() {
+        Task {
+            await storeManager.restorePurchases()
+            if SharedDefaults.shared.isPremium {
+                onUpgrade()
+            }
+        }
     }
 }
 
@@ -1684,17 +2046,299 @@ struct PaywallView: View {
 struct FeatureRow: View {
     let icon: String
     let text: String
+    var isLocked: Bool = false
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 18))
-                .foregroundColor(Color(red: 0.0, green: 0.48, blue: 1.0))
-                .frame(width: 24)
+            ZStack {
+                Image(systemName: icon)
+                    .font(.system(size: 18))
+                    .foregroundColor(isLocked ? .orange : Color(red: 0.0, green: 0.48, blue: 1.0))
+                    .frame(width: 24)
+
+                if isLocked {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 8))
+                        .foregroundColor(.orange)
+                        .offset(x: 10, y: -8)
+                }
+            }
             Text(text)
                 .font(.system(size: 16))
+                .foregroundColor(isLocked ? .secondary : .primary)
             Spacer()
+            if isLocked {
+                Text("Premium")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.orange)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.orange.opacity(0.15))
+                    .cornerRadius(6)
+            }
         }
+    }
+}
+
+// MARK: - Trial Countdown View
+struct TrialCountdownView: View {
+    private var daysRemaining: Int {
+        SharedDefaults.shared.trialDaysRemaining
+    }
+
+    private var photosRemaining: Int {
+        SharedDefaults.shared.trialPhotosRemaining
+    }
+
+    private var trialProgress: Double {
+        // Progress from 0 to 1 (7 days to 0 days)
+        Double(7 - daysRemaining) / 7.0
+    }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            // Days remaining display
+            HStack(spacing: 16) {
+                // Countdown circle
+                ZStack {
+                    // Background circle
+                    Circle()
+                        .stroke(Color.gray.opacity(0.2), lineWidth: 6)
+                        .frame(width: 60, height: 60)
+
+                    // Progress circle (counts down)
+                    Circle()
+                        .trim(from: 0, to: 1 - trialProgress)
+                        .stroke(
+                            daysRemaining <= 2 ? Color.red : Color(red: 0.0, green: 0.48, blue: 1.0),
+                            style: StrokeStyle(lineWidth: 6, lineCap: .round)
+                        )
+                        .frame(width: 60, height: 60)
+                        .rotationEffect(.degrees(-90))
+
+                    // Days number
+                    VStack(spacing: 0) {
+                        Text("\(daysRemaining)")
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundColor(daysRemaining <= 2 ? .red : .primary)
+                        Text("days")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    if daysRemaining > 0 {
+                        Text("Free Trial")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.primary)
+                        Text("\(daysRemaining) day\(daysRemaining == 1 ? "" : "s") remaining")
+                            .font(.system(size: 14))
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Trial Ended")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.red)
+                        Text("Upgrade to continue")
+                            .font(.system(size: 14))
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                Spacer()
+            }
+            .padding(.vertical, 8)
+
+            // Trial limitations info
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(photosRemaining == 0 ? .red : .orange)
+                    Text("\(photosRemaining)/3 screenshots remaining")
+                        .font(.system(size: 13))
+                        .foregroundColor(photosRemaining == 0 ? .red : .secondary)
+                }
+                HStack(spacing: 8) {
+                    Image(systemName: "text.bubble")
+                        .font(.system(size: 12))
+                        .foregroundColor(.orange)
+                    Text("Basic responses only")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                }
+                HStack(spacing: 8) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 12))
+                        .foregroundColor(.orange)
+                    Text("No conversation history")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+}
+
+// MARK: - Conversation History View
+struct ConversationHistoryView: View {
+    let messages: [ChatMessage]
+    let onNewChat: () -> Void
+    let onLoadConversation: ([[String: Any]]) -> Void
+    let onDismiss: () -> Void
+
+    @State private var savedConversations: [[String: Any]] = []
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                List {
+                    // Current conversation
+                    if !messages.isEmpty {
+                        Section {
+                            Button(action: onDismiss) {
+                                ConversationRow(
+                                    title: "Current Conversation",
+                                    preview: messages.last?.text ?? "",
+                                    messageCount: messages.count,
+                                    isActive: true
+                                )
+                            }
+                        } header: {
+                            Text("Active")
+                        }
+                    }
+
+                    // Previous conversations
+                    if !savedConversations.isEmpty {
+                        Section {
+                            ForEach(Array(savedConversations.enumerated()), id: \.offset) { index, convo in
+                                Button(action: {
+                                    if let msgs = convo["messages"] as? [[String: Any]] {
+                                        onLoadConversation(msgs)
+                                    }
+                                }) {
+                                    ConversationRow(
+                                        title: formatDate(convo["createdAt"] as? Double),
+                                        preview: convo["preview"] as? String ?? "Conversation",
+                                        messageCount: (convo["messages"] as? [[String: Any]])?.count ?? 0,
+                                        isActive: false
+                                    )
+                                }
+                            }
+                            .onDelete(perform: deleteConversation)
+                        } header: {
+                            Text("Previous")
+                        }
+                    }
+                }
+                .listStyle(.insetGrouped)
+
+                // Empty state
+                if messages.isEmpty && savedConversations.isEmpty {
+                    VStack(spacing: 16) {
+                        Spacer()
+                        Image(systemName: "bubble.left.and.bubble.right")
+                            .font(.system(size: 48))
+                            .foregroundColor(.gray.opacity(0.5))
+                        Text("No conversations yet")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                        Text("Start chatting to see your history here")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                        Spacer()
+                    }
+                }
+
+                // New Chat Button
+                Button(action: onNewChat) {
+                    HStack {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 20))
+                        Text("New Conversation")
+                            .font(.system(size: 16, weight: .semibold))
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(Color(red: 0.0, green: 0.48, blue: 1.0))
+                    .cornerRadius(12)
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 30)
+            }
+            .navigationTitle("Conversations")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        onDismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+            .onAppear {
+                savedConversations = SharedDefaults.shared.savedConversations
+            }
+        }
+    }
+
+    private func formatDate(_ timestamp: Double?) -> String {
+        guard let timestamp = timestamp else { return "Conversation" }
+        let date = Date(timeIntervalSince1970: timestamp)
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    private func deleteConversation(at offsets: IndexSet) {
+        for index in offsets {
+            if let id = savedConversations[index]["id"] as? String {
+                SharedDefaults.shared.deleteConversation(id: id)
+            }
+        }
+        savedConversations = SharedDefaults.shared.savedConversations
+    }
+}
+
+// MARK: - Conversation Row
+struct ConversationRow: View {
+    let title: String
+    let preview: String
+    let messageCount: Int
+    let isActive: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(isActive ? Color(red: 0.0, green: 0.48, blue: 1.0) : Color.gray.opacity(0.3))
+                    .frame(width: 44, height: 44)
+                Image(systemName: "message.fill")
+                    .font(.system(size: 18))
+                    .foregroundColor(isActive ? .white : .gray)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.primary)
+
+                Text(preview.prefix(40) + (preview.count > 40 ? "..." : ""))
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Text("\(messageCount) msgs")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+        }
+        .padding(.vertical, 4)
     }
 }
 

@@ -30,6 +30,8 @@ class KeyboardViewController: UIInputViewController {
     private let whoOptions = ["crush", "dating app", "ex", "friend"]
     private let helpOptions = ["respond", "start convo", "what to say", "keep going"]
 
+    private var heightConstraint: NSLayoutConstraint?
+
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
@@ -37,6 +39,14 @@ class KeyboardViewController: UIInputViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+
+        // Set keyboard height constraint
+        if heightConstraint == nil, let inputView = inputView {
+            heightConstraint = inputView.heightAnchor.constraint(equalToConstant: 260)
+            heightConstraint?.priority = .defaultHigh
+            heightConstraint?.isActive = true
+        }
+
         checkAndStart()
     }
 
@@ -44,12 +54,6 @@ class KeyboardViewController: UIInputViewController {
         super.viewWillDisappear(animated)
         pollTimer?.invalidate()
         pollTimer = nil
-    }
-
-    override func viewWillLayoutSubviews() {
-        super.viewWillLayoutSubviews()
-        view.frame.size.height = 240
-        inputView?.invalidateIntrinsicContentSize()
     }
 
     private func setupUI() {

@@ -69,6 +69,12 @@ async function generateResponse(prompt) {
       max_tokens: 150,
       system: `You're texting a friend who needs help with their conversations. Sound like a real person - not an AI, not a therapist, not customer service.
 
+IMPORTANT - Be inclusive:
+- This app is for everyone - all genders, all orientations
+- Pick up on context clues to understand who they're texting (guy, girl, etc.)
+- Don't assume - if unclear, use neutral language or ask naturally
+- Adapt your advice based on who they're talking to and their situation
+
 How to sound human:
 - Use lowercase, minimal punctuation
 - React naturally ("lol", "wait", "oh", "nah", "bet", "lowkey")
@@ -87,7 +93,7 @@ How to sound human:
   }
 }
 
-async function analyzeImage(imagePath, userMessage, profile, tone, context = {}) {
+async function analyzeImage(imagePath, userMessage, profile, tone, context = {}, isTrial = false) {
   if (!anthropicClient) return null;
   try {
     // Force fresh read of the image file - no caching
@@ -142,7 +148,30 @@ async function analyzeImage(imagePath, userMessage, profile, tone, context = {})
       personalityContext += `\n\nTHEIR VIBE: ${userPersonality.join(', ')}`;
     }
 
-    const systemPrompt = `You're ${userName}'s friend helping them figure out what to text back. Read the screenshot first.
+    // Different prompts for trial vs premium users
+    let systemPrompt;
+
+    if (isTrial) {
+      // TRIAL: Basic, generic analysis - no personalization
+      systemPrompt = `You help people respond to text messages. Read the screenshot.
+
+Give a VERY BASIC response:
+1. Briefly say what's happening in the convo (1 sentence)
+2. Give ONE generic reply suggestion
+
+Keep it short and simple. Don't personalize. Don't analyze deeply.
+End with: "upgrade to premium for personalized replies that match your style"
+
+Be helpful but basic - this is a trial user.`;
+    } else {
+      // PREMIUM: Full personalized analysis
+      systemPrompt = `You're ${userName}'s friend helping them figure out what to text back. Read the screenshot first.
+
+IMPORTANT - Be inclusive:
+- This app is for everyone - all genders, all orientations
+- Pick up on context clues to understand who they're texting (guy, girl, etc.)
+- Don't assume - if unclear, use neutral language
+- Adapt your advice based on who they're talking to and their situation
 
 HOW TO HELP:
 1. Look at what the other person said (their last message in the screenshot)
@@ -164,6 +193,7 @@ HOW TO TALK TO ${userName.toUpperCase()}:
 
 ${relationshipVibe}
 ${styleVibe}${personalityContext}`;
+    }
 
     // Build the user prompt based on context
     let contextIntro = '';
@@ -292,6 +322,9 @@ app.get('/api/profile/:userId', (req, res) => {
     personality: profile.personality || [],
     about: profile.about || '',
     hasCompletedOnboarding: profile.hasCompletedOnboarding || false,
+    // Premium & trial info
+    isPremium: profile.isPremium || false,
+    trialStartDate: profile.createdAt,  // Trial starts when account was created
     // Deep personality settings
     responseStyle: profile.responseStyle,
     messageLength: profile.messageLength,
@@ -412,6 +445,9 @@ app.post('/api/profile/settings', async (req, res) => {
   if (settings.howThingsEnd !== undefined) profile.howThingsEnd = settings.howThingsEnd;
   if (settings.confidenceLevel !== undefined) profile.confidenceLevel = settings.confidenceLevel;
   if (settings.whatYouWant !== undefined) profile.whatYouWant = settings.whatYouWant;
+
+  // Onboarding flag (for returning user detection)
+  if (settings.hasCompletedOnboarding !== undefined) profile.hasCompletedOnboarding = settings.hasCompletedOnboarding;
 
   profile.updatedAt = new Date().toISOString();
   saveProfiles();
@@ -559,8 +595,11 @@ app.post('/api/message', upload.single('image'), async (req, res) => {
     msgLength = '2',
     emojiUsage = '2',
     flirtiness = '1',
-    userSamples = ''
+    userSamples = '',
+    isTrialUser = 'false'
   } = req.body;
+
+  const isTrial = isTrialUser === 'true';
 
   const msgNum = parseInt(messageCount) || 0;
   const profile = profiles[userId] || { answers: [], messages: [], textSamples: '', style: {} };
@@ -613,7 +652,7 @@ app.post('/api/message', upload.single('image'), async (req, res) => {
 
   // If image was uploaded, analyze it
   if (imageInfo && imageInfo.fullPath) {
-    const imageAnalysis = await analyzeImage(imageInfo.fullPath, message, profile, tone, imageContext);
+    const imageAnalysis = await analyzeImage(imageInfo.fullPath, message, profile, tone, imageContext, isTrial);
     if (imageAnalysis) {
       return res.json({ reply: imageAnalysis, image: { path: imageInfo.path, original: imageInfo.original } });
     }
@@ -684,15 +723,34 @@ Be direct now. You know enough about them. Time to help. lowercase.`;
     const userPersonality = profile.personality || [];
     const userStruggles = profile.struggles || [];
 
-    // Build personality context
-    let personalityContext = '';
-    if (profile.noReplyThought) personalityContext += ` When no reply: "${profile.noReplyThought}".`;
-    if (profile.whenYouLikeSomeone) personalityContext += ` When they like someone: "${profile.whenYouLikeSomeone}".`;
-    if (profile.whatKillsConvos) personalityContext += ` What kills their convos: "${profile.whatKillsConvos}".`;
-    if (profile.confidenceLevel) personalityContext += ` Confidence: "${profile.confidenceLevel}".`;
-    if (profile.whatYouWant) personalityContext += ` Looking for: "${profile.whatYouWant}".`;
+    // TRIAL USERS: Give basic, generic responses to encourage upgrade
+    if (isTrial) {
+      prompt = `Someone needs help with their texting. Give a very basic, generic response.
 
-    prompt = `You're ${userName || 'someone'}'s friend helping them text. Talk like you're texting them back.
+they said: "${message}"
+
+Rules for TRIAL users:
+- Keep it super short - 1-2 sentences max
+- Give only ONE generic suggestion
+- Don't personalize it at all
+- Be helpful but very basic
+- Don't analyze their style or situation deeply
+- End with a subtle hint like "upgrade for personalized suggestions that match your style"
+
+Example responses:
+- "try something like 'hey what's up' - upgrade for replies that actually sound like you"
+- "keep it casual. premium gets you personalized responses based on how you text"
+- "just be yourself. want suggestions tailored to your vibe? check out premium"`;
+    } else {
+      // Build personality context for premium users
+      let personalityContext = '';
+      if (profile.noReplyThought) personalityContext += ` When no reply: "${profile.noReplyThought}".`;
+      if (profile.whenYouLikeSomeone) personalityContext += ` When they like someone: "${profile.whenYouLikeSomeone}".`;
+      if (profile.whatKillsConvos) personalityContext += ` What kills their convos: "${profile.whatKillsConvos}".`;
+      if (profile.confidenceLevel) personalityContext += ` Confidence: "${profile.confidenceLevel}".`;
+      if (profile.whatYouWant) personalityContext += ` Looking for: "${profile.whatYouWant}".`;
+
+      prompt = `You're ${userName || 'someone'}'s friend helping them text. Talk like you're texting them back.
 
 about them: ${comesAcrossAs} vibe${userPersonality.length > 0 ? `, ${userPersonality.join(', ')}` : ''}${profile.textSamples ? `. texts like: "${profile.textSamples.slice(0, 100)}"` : ''}${personalityContext}
 
@@ -710,6 +768,7 @@ rules:
 - the replies you suggest should sound like ${userName || 'them'}, not you
 - be real with them - if something seems off, say it
 - don't say "I think" or "In my opinion" - just say it`;
+    }
   }
 
   // If trial expired, give generic response instead
@@ -867,6 +926,12 @@ app.post('/api/keyboard/suggest', async (req, res) => {
 
   const prompt = `You're helping ${userName} respond in a ${conversationType} conversation.
 
+IMPORTANT - Be inclusive:
+- This app is for everyone - all genders, all orientations
+- Pick up on context clues to understand who they're texting
+- Don't assume gender - if unclear, use neutral language
+- Adapt your suggestions based on who they're talking to
+
 THEIR VIBE: ${vibes}
 ${userPersonality.length > 0 ? `PERSONALITY: ${userPersonality.join(', ')}` : ''}
 ${userStruggles.length > 0 ? `STRUGGLES WITH: ${userStruggles.join(', ')}` : ''}
@@ -996,6 +1061,12 @@ app.post('/api/keyboard/analyze-image', upload.single('image'), async (req, res)
     }
 
     const systemPrompt = `You analyze text message screenshots and generate replies.
+
+IMPORTANT - Be inclusive:
+- This app is for everyone - all genders, all orientations
+- Pick up on context clues to understand who they're texting
+- Don't assume gender - if unclear, use neutral language
+- Adapt your suggestions based on who they're talking to
 
 IMPORTANT: You must READ the actual text in the image before responding.
 

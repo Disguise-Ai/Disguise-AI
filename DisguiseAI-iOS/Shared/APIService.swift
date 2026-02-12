@@ -170,6 +170,9 @@ class APIService {
         let flirtiness = SharedDefaults.shared.flirtiness
         let textSamples = SharedDefaults.shared.textSamples
 
+        // Check if user is on trial (not premium)
+        let isTrialUser = !SharedDefaults.shared.isPremium
+
         let body: [String: Any] = [
             "message": message,
             "userId": userId,
@@ -177,7 +180,8 @@ class APIService {
             "msgLength": msgLength,
             "emojiUsage": emojiUsage,
             "flirtiness": flirtiness,
-            "userSamples": textSamples
+            "userSamples": textSamples,
+            "isTrialUser": isTrialUser ? "true" : "false"
         ]
 
         do {
@@ -276,6 +280,12 @@ class APIService {
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"flirtiness\"\r\n\r\n".data(using: .utf8)!)
         body.append("\(flirtiness)\r\n".data(using: .utf8)!)
+
+        // Add isTrialUser flag
+        let isTrialUser = !SharedDefaults.shared.isPremium
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"isTrialUser\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(isTrialUser ? "true" : "false")\r\n".data(using: .utf8)!)
 
         body.append("--\(boundary)--\r\n".data(using: .utf8)!)
 
@@ -383,6 +393,12 @@ class APIService {
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"flirtiness\"\r\n\r\n".data(using: .utf8)!)
         body.append("\(flirtiness)\r\n".data(using: .utf8)!)
+
+        // Add isTrialUser flag
+        let isTrialUser = !SharedDefaults.shared.isPremium
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"isTrialUser\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(isTrialUser ? "true" : "false")\r\n".data(using: .utf8)!)
 
         body.append("--\(boundary)--\r\n".data(using: .utf8)!)
 
