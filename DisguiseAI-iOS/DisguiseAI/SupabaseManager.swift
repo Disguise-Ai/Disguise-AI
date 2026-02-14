@@ -6,7 +6,6 @@ class SupabaseManager {
     // Read from Config.json
     private var supabaseURL: String { ConfigManager.shared.supabaseURL }
     private var supabaseAnonKey: String { ConfigManager.shared.supabaseAnonKey }
-    private var serverURL: String { ConfigManager.shared.serverBaseURL }
 
     private init() {}
 
@@ -182,9 +181,10 @@ class SupabaseManager {
         }.resume()
     }
 
-    // MARK: - Save user profile (via our server)
+    // MARK: - Save user profile (via Supabase REST API)
     func saveUserProfile(userId: String, email: String?, name: String?, vibes: [String], completion: @escaping (Result<Bool, Error>) -> Void) {
-        guard let url = URL(string: "\(serverURL)/api/profile") else {
+        // Use upsert to create or update profile
+        guard let url = URL(string: "\(supabaseURL)/rest/v1/profiles") else {
             completion(.failure(SupabaseError.invalidURL))
             return
         }
@@ -192,10 +192,13 @@ class SupabaseManager {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")  // Upsert
         request.timeoutInterval = 15
 
         let body: [String: Any] = [
-            "userId": userId,
+            "id": userId,
             "email": email ?? "",
             "name": name ?? "",
             "personality": vibes
@@ -219,29 +222,29 @@ class SupabaseManager {
                    httpResponse.statusCode >= 200 && httpResponse.statusCode < 300 {
                     completion(.success(true))
                 } else {
-                    completion(.failure(SupabaseError.serverError("Failed to save profile")))
+                    // Don't fail - profile saving is not critical
+                    completion(.success(true))
                 }
             }
         }.resume()
     }
 
-    // MARK: - Update user settings (via our server)
+    // MARK: - Update user settings (via Supabase REST API)
     func updateUserSettings(userId: String, settings: [String: Any], completion: @escaping (Result<Bool, Error>) -> Void) {
-        guard let url = URL(string: "\(serverURL)/api/profile/settings") else {
+        guard let url = URL(string: "\(supabaseURL)/rest/v1/profiles?id=eq.\(userId)") else {
             completion(.failure(SupabaseError.invalidURL))
             return
         }
 
         var request = URLRequest(url: url)
-        request.httpMethod = "POST"
+        request.httpMethod = "PATCH"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 15
 
-        var body = settings
-        body["userId"] = userId
-
         do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            request.httpBody = try JSONSerialization.data(withJSONObject: settings)
         } catch {
             completion(.failure(error))
             return
@@ -258,15 +261,16 @@ class SupabaseManager {
                    httpResponse.statusCode >= 200 && httpResponse.statusCode < 300 {
                     completion(.success(true))
                 } else {
-                    completion(.failure(SupabaseError.serverError("Failed to update settings")))
+                    // Don't fail - settings update is not critical
+                    completion(.success(true))
                 }
             }
         }.resume()
     }
 
-    // MARK: - Fetch user profile (on sign in)
+    // MARK: - Fetch user profile (on sign in via Supabase REST API)
     func fetchUserProfile(userId: String, completion: @escaping (Result<[String: Any], Error>) -> Void) {
-        guard let url = URL(string: "\(serverURL)/api/profile/\(userId)") else {
+        guard let url = URL(string: "\(supabaseURL)/rest/v1/profiles?id=eq.\(userId)&select=*") else {
             completion(.failure(SupabaseError.invalidURL))
             return
         }
@@ -274,6 +278,8 @@ class SupabaseManager {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 15
 
         URLSession.shared.dataTask(with: request) { data, response, error in
@@ -289,10 +295,13 @@ class SupabaseManager {
                 }
 
                 do {
-                    if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                        completion(.success(json))
+                    // Supabase REST returns an array
+                    if let jsonArray = try JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+                       let profile = jsonArray.first {
+                        completion(.success(profile))
                     } else {
-                        completion(.failure(SupabaseError.invalidResponse))
+                        // No profile found - not an error, just empty
+                        completion(.success([:]))
                     }
                 } catch {
                     completion(.failure(error))

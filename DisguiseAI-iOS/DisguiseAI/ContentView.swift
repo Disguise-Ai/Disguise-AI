@@ -200,67 +200,40 @@ struct EmailAuthView: View {
                     SharedDefaults.shared.userId = user.id
 
                     // Returning user - they already went through onboarding once
-                    // Skip everything and go straight to chat
                     SharedDefaults.shared.isVerifiedUser = true
                     SharedDefaults.shared.hasCompletedOnboarding = true
                     SharedDefaults.shared.hasCompletedKeyboardSetup = true
 
-                    isLoading = false
-                    onComplete()  // Continue immediately - don't wait for profile!
-
-                    // Load profile in background (fire and forget)
-                    DispatchQueue.global(qos: .background).async {
-                        SupabaseManager.shared.fetchUserProfile(userId: user.id) { profileResult in
+                    // Load profile FIRST so we have their name and settings
+                    SupabaseManager.shared.fetchUserProfile(userId: user.id) { profileResult in
+                        DispatchQueue.main.async {
                             if case .success(let profile) = profileResult {
-                                DispatchQueue.main.async {
-                                    // Restore their settings silently
-                                    if let name = profile["name"] as? String, !name.isEmpty {
-                                        SharedDefaults.shared.userName = name
-                                    }
-                                    if let vibes = profile["personality"] as? [String] {
-                                        SharedDefaults.shared.selectedVibes = vibes
-                                        SharedDefaults.shared.personality = vibes
-                                    }
-                                    if let style = profile["responseStyle"] as? String {
-                                        SharedDefaults.shared.responseStyle = style
-                                    }
-                                    if let length = profile["messageLength"] as? Int {
-                                        SharedDefaults.shared.messageLength = String(length)
-                                    }
-                                    if let emoji = profile["emojiUsage"] as? Int {
-                                        SharedDefaults.shared.emojiUsage = String(emoji)
-                                    }
-                                    if let flirt = profile["flirtiness"] as? Int {
-                                        SharedDefaults.shared.flirtiness = String(flirt)
-                                    }
-                                    if let samples = profile["textSamples"] as? String {
-                                        SharedDefaults.shared.textSamples = samples
-                                    }
+                                // Restore their name
+                                if let name = profile["name"] as? String, !name.isEmpty {
+                                    SharedDefaults.shared.userName = name
+                                }
+                                if let vibes = profile["personality"] as? [String] {
+                                    SharedDefaults.shared.selectedVibes = vibes
+                                    SharedDefaults.shared.personality = vibes
+                                }
+                                if let style = profile["responseStyle"] as? String {
+                                    SharedDefaults.shared.responseStyle = style
+                                }
+                                if let samples = profile["textSamples"] as? String {
+                                    SharedDefaults.shared.textSamples = samples
+                                }
 
-                                    // Restore deep personality settings
-                                    if let val = profile["noReplyThought"] as? String { UserDefaults.standard.set(val, forKey: "noReplyThought") }
-                                    if let val = profile["whenYouLikeSomeone"] as? String { UserDefaults.standard.set(val, forKey: "whenYouLikeSomeone") }
-                                    if let val = profile["whatKillsConvos"] as? String { UserDefaults.standard.set(val, forKey: "whatKillsConvos") }
-                                    if let val = profile["quietConvoResponse"] as? String { UserDefaults.standard.set(val, forKey: "quietConvoResponse") }
-                                    if let val = profile["biggestFear"] as? String { UserDefaults.standard.set(val, forKey: "biggestFear") }
-                                    if let val = profile["howThingsEnd"] as? String { UserDefaults.standard.set(val, forKey: "howThingsEnd") }
-                                    if let val = profile["confidenceLevel"] as? String { UserDefaults.standard.set(val, forKey: "confidenceLevel") }
-                                    if let val = profile["whatYouWant"] as? String { UserDefaults.standard.set(val, forKey: "whatYouWant") }
-
-                                    // Restore premium status
-                                    if let isPremium = profile["isPremium"] as? Bool, isPremium {
-                                        SharedDefaults.shared.isPremium = true
-                                    }
-
-                                    // Restore trial start date if exists
-                                    if let trialStart = profile["trialStartDate"] as? String {
-                                        let formatter = ISO8601DateFormatter()
-                                        if let date = formatter.date(from: trialStart) {
-                                            SharedDefaults.shared.trialStartDate = date
-                                        }
-                                    }
+                                // Restore premium status
+                                if let isPremium = profile["is_premium"] as? Bool, isPremium {
+                                    SharedDefaults.shared.isPremium = true
+                                } else if let isPremium = profile["isPremium"] as? Bool, isPremium {
+                                    SharedDefaults.shared.isPremium = true
                                 }
                             }
+
+                            // Now continue to chat (with name loaded)
+                            isLoading = false
+                            onComplete()
                         }
                     }
 
@@ -1069,7 +1042,7 @@ struct ChatView: View {
     }
 
     private func loadChatHistory() {
-        // First, load local history instantly (no network delay)
+        // Load local history INSTANTLY (no network delay)
         let localHistory = SharedDefaults.shared.localChatHistory
         if !localHistory.isEmpty {
             for item in localHistory {
@@ -1080,118 +1053,106 @@ struct ChatView: View {
             }
             // User has history, skip onboarding questions
             conversationStep = 3
-
-            // Sync with server in background (don't block UI)
-            syncWithServerInBackground()
             return
         }
 
-        // No local history - check if this is a verified returning user
+        // No local history - show welcome/initial message INSTANTLY
         if SharedDefaults.shared.isVerifiedUser {
-            // They've used the app before, try to get their history from server
-            fetchServerHistory { success in
-                if !success {
-                    // No server history, show welcome back message
-                    showWelcomeBackMessage()
-                }
-            }
+            // Returning user - instant welcome back
+            showWelcomeBackMessage()
         } else {
-            // New user, show onboarding
+            // New user - instant greeting
             loadInitialMessage()
         }
     }
 
-    private func syncWithServerInBackground() {
-        guard let userId = SharedDefaults.shared.userId ?? SharedDefaults.shared.supabaseUserId,
-              let url = URL(string: "\(ConfigManager.shared.serverBaseURL)/api/chat/\(userId)") else { return }
-
-        // Sync silently in background - don't update UI since we already have local data
-        URLSession.shared.dataTask(with: url).resume()
-    }
-
-    private func fetchServerHistory(completion: @escaping (Bool) -> Void) {
-        guard let userId = SharedDefaults.shared.userId ?? SharedDefaults.shared.supabaseUserId,
-              let url = URL(string: "\(ConfigManager.shared.serverBaseURL)/api/chat/\(userId)") else {
-            completion(false)
-            return
-        }
-
-        URLSession.shared.dataTask(with: url) { data, response, error in
-            DispatchQueue.main.async {
-                if let data = data,
-                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let history = json["chatHistory"] as? [[String: Any]], !history.isEmpty {
-                    // Load messages from server
-                    for item in history {
-                        if let text = item["text"] as? String,
-                           let isUser = item["isUser"] as? Bool {
-                            messages.append(ChatMessage(text: text, isUser: isUser))
-                            // Also save to local storage
-                            SharedDefaults.shared.appendChatMessage(text: text, isUser: isUser)
-                        }
-                    }
-                    conversationStep = 3
-                    completion(true)
-                } else {
-                    completion(false)
-                }
-            }
-        }.resume()
-    }
-
     private func showWelcomeBackMessage() {
-        let name = SharedDefaults.shared.userName ?? "there"
-        let welcomeBack = "welcome back \(name)! send me a screenshot or tell me what's going on"
-        messages.append(ChatMessage(text: welcomeBack, isUser: false))
-        SharedDefaults.shared.appendChatMessage(text: welcomeBack, isUser: false)
-        saveChatMessage(welcomeBack, isUser: false)
-        conversationStep = 3
+        let name = SharedDefaults.shared.userName
+
+        // Different messages based on whether we have their name
+        let welcomeMessages: [String]
+        if let name = name, !name.isEmpty {
+            welcomeMessages = [
+                "yooo \(name) what's good",
+                "ayyy \(name)! who we texting today",
+                "\(name)! what we working with",
+                "ok \(name) i'm ready, show me the convo"
+            ]
+        } else {
+            welcomeMessages = [
+                "yooo what's good",
+                "ayyy! who we texting today",
+                "ok i'm ready, show me the convo",
+                "what we working with today"
+            ]
+        }
+        let welcomeBack = welcomeMessages.randomElement() ?? welcomeMessages[0]
+
+        // Show typing indicator for 3-5 seconds
+        isLoading = true
+        let delay = Double.random(in: 3.0...5.0)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            self.isLoading = false
+            self.messages.append(ChatMessage(text: welcomeBack, isUser: false))
+            SharedDefaults.shared.appendChatMessage(text: welcomeBack, isUser: false)
+            self.conversationStep = 3
+        }
     }
 
     private func loadInitialMessage() {
-        let name = SharedDefaults.shared.userName ?? "there"
-        let vibes = SharedDefaults.shared.selectedVibes.joined(separator: ", ").lowercased()
+        let name = SharedDefaults.shared.userName
+        let vibes = SharedDefaults.shared.selectedVibes.joined(separator: " + ").lowercased()
 
-        let greeting = "yo \(name)! \(vibes.isEmpty ? "" : "\(vibes) energy, i fw it. ")real quick before we get into it"
-
-        messages.append(ChatMessage(text: greeting, isUser: false))
-        saveChatMessage(greeting, isUser: false)
-
-        // Show typing indicator briefly then ask first question
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            isLoading = true
+        // Build a natural greeting
+        let greeting: String
+        if let name = name, !name.isEmpty {
+            if !vibes.isEmpty {
+                greeting = "ok \(name) i see you... \(vibes) vibes, i can work with that"
+            } else {
+                greeting = "ayyy \(name)! let's get you some W's in these texts"
+            }
+        } else {
+            if !vibes.isEmpty {
+                greeting = "ok i see you... \(vibes) vibes, i can work with that"
+            } else {
+                greeting = "ayyy let's get you some W's in these texts"
+            }
         }
 
-        // Ask first question after 1.5 seconds (faster, less laggy feel)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            isLoading = false
-            let question1 = "who you tryna text rn? like is it someone from an app, a crush, someone you just started talking to?"
-            messages.append(ChatMessage(text: question1, isUser: false))
-            saveChatMessage(question1, isUser: false)
-            conversationStep = 1
+        // Show typing indicator for 3-5 seconds before first message
+        isLoading = true
+        let delay = Double.random(in: 3.0...5.0)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            self.isLoading = false
+            self.messages.append(ChatMessage(text: greeting, isUser: false))
+            SharedDefaults.shared.appendChatMessage(text: greeting, isUser: false)
+
+            // Second message after another 3-5 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                self.isLoading = true
+            }
+
+            let secondDelay = Double.random(in: 3.0...5.0)
+            DispatchQueue.main.asyncAfter(deadline: .now() + secondDelay) {
+                self.isLoading = false
+                let followUps = [
+                    "screenshot the convo and i'll tell you what to say",
+                    "drop a screenshot or tell me what's happening",
+                    "show me what you're working with"
+                ]
+                let question1 = followUps.randomElement() ?? followUps[0]
+                self.messages.append(ChatMessage(text: question1, isUser: false))
+                SharedDefaults.shared.appendChatMessage(text: question1, isUser: false)
+                self.conversationStep = 3
+            }
         }
     }
 
     private func saveChatMessage(_ text: String, isUser: Bool) {
-        // Save locally first (instant)
+        // Save locally - instant, no network needed
         SharedDefaults.shared.appendChatMessage(text: text, isUser: isUser)
-
-        // Then sync to server in background
-        guard let userId = SharedDefaults.shared.userId ?? SharedDefaults.shared.supabaseUserId,
-              let url = URL(string: "\(ConfigManager.shared.serverBaseURL)/api/chat") else { return }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let body: [String: Any] = [
-            "userId": userId,
-            "message": text,
-            "isUser": isUser
-        ]
-
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        URLSession.shared.dataTask(with: request).resume()
     }
 
     private func sendMessage() {
@@ -1203,58 +1164,32 @@ struct ChatView: View {
         messages.append(ChatMessage(text: userText, isUser: true))
         saveChatMessage(userText, isUser: true)
 
-        // Show typing indicator
+        // Show typing indicator immediately
         isLoading = true
 
-        // Random delay to feel human (1-2.5 seconds)
-        let typingDelay = Double.random(in: 1.0...2.5)
+        // Track when we started to ensure minimum delay
+        let startTime = Date()
+        let minDelay: TimeInterval = 3.0
+        let maxDelay: TimeInterval = 5.0
 
-        // Handle initial onboarding flow
-        if conversationStep == 1 {
-            // They answered Q1, now ask Q2
-            DispatchQueue.main.asyncAfter(deadline: .now() + typingDelay) {
-                isLoading = false
-                let question2 = "bet. so what usually messes you up? like do you not know how to start, do convos die out, or you just don't know how to flirt without being weird lol"
-                messages.append(ChatMessage(text: question2, isUser: false))
-                saveChatMessage(question2, isUser: false)
-                conversationStep = 2
-            }
-        } else if conversationStep == 2 {
-            // They answered Q2, now ready to help
-            DispatchQueue.main.asyncAfter(deadline: .now() + typingDelay) {
-                isLoading = false
-                let ready = "say less. send me a screenshot of the convo or just tell me what's going on and i'll help you out"
-                messages.append(ChatMessage(text: ready, isUser: false))
-                saveChatMessage(ready, isUser: false)
-                conversationStep = 3
+        // Call API
+        APIService.shared.sendMessage(userText) { result in
+            // Calculate how long API took
+            let elapsed = Date().timeIntervalSince(startTime)
+            let targetDelay = Double.random(in: minDelay...maxDelay)
+            let remainingDelay = max(0, targetDelay - elapsed)
 
-                // Show typing indicator then tip about settings
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    isLoading = true
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                    isLoading = false
-                    let tip = "oh and btw - the more you fill out in settings, the better i get at sounding like you. just tap the gear icon whenever"
-                    messages.append(ChatMessage(text: tip, isUser: false))
-                    saveChatMessage(tip, isUser: false)
-                }
-            }
-        } else {
-            // Normal conversation - use API
-            APIService.shared.sendMessage(userText) { result in
-                // Add extra delay after API returns to feel natural
-                let responseDelay = Double.random(in: 0.5...1.5)
-                DispatchQueue.main.asyncAfter(deadline: .now() + responseDelay) {
-                    isLoading = false
-                    switch result {
-                    case .success(let response):
-                        messages.append(ChatMessage(text: response, isUser: false))
-                        saveChatMessage(response, isUser: false)
-                    case .failure:
-                        let errorMsg = "my bad, couldn't connect rn. try again?"
-                        messages.append(ChatMessage(text: errorMsg, isUser: false))
-                        saveChatMessage(errorMsg, isUser: false)
-                    }
+            // Wait remaining time to hit 3-5 second total
+            DispatchQueue.main.asyncAfter(deadline: .now() + remainingDelay) {
+                isLoading = false
+                switch result {
+                case .success(let response):
+                    messages.append(ChatMessage(text: response, isUser: false))
+                    saveChatMessage(response, isUser: false)
+                case .failure:
+                    let errorMsg = "my bad, couldn't connect rn. try again?"
+                    messages.append(ChatMessage(text: errorMsg, isUser: false))
+                    saveChatMessage(errorMsg, isUser: false)
                 }
             }
         }
@@ -1316,15 +1251,27 @@ struct ChatView: View {
     private func sendImageWithContext(_ image: UIImage, who: String, help: String) {
         isLoading = true
 
+        // Track when we started to ensure minimum delay
+        let startTime = Date()
+        let minDelay: TimeInterval = 3.0
+        let maxDelay: TimeInterval = 5.0
+
         APIService.shared.sendImageWithContext(image, who: who, help: help) { result in
-            DispatchQueue.main.async {
+            // Calculate how long API took
+            let elapsed = Date().timeIntervalSince(startTime)
+            let targetDelay = Double.random(in: minDelay...maxDelay)
+            let remainingDelay = max(0, targetDelay - elapsed)
+
+            // Wait remaining time to hit 3-5 second total
+            DispatchQueue.main.asyncAfter(deadline: .now() + remainingDelay) {
                 isLoading = false
+
                 switch result {
                 case .success(let response):
                     messages.append(ChatMessage(text: response, isUser: false))
                     saveChatMessage(response, isUser: false)
                 case .failure:
-                    let errorMsg = "couldn't connect. try again?"
+                    let errorMsg = "couldn't read that one. try again?"
                     messages.append(ChatMessage(text: errorMsg, isUser: false))
                     saveChatMessage(errorMsg, isUser: false)
                 }

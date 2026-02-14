@@ -230,12 +230,12 @@ class SharedDefaults {
 
     var canUploadPhoto: Bool {
         if isPremium { return true }
-        return trialPhotoUploads < 3
+        return trialPhotoUploads < 5  // Allow 5 photo uploads for trial users
     }
 
     var trialPhotosRemaining: Int {
         if isPremium { return 999 }
-        return max(0, 3 - trialPhotoUploads)
+        return max(0, 5 - trialPhotoUploads)  // 5 photos for trial
     }
 
     // MARK: - Clear All

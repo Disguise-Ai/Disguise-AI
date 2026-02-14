@@ -23,8 +23,13 @@ class KeyboardViewController: UIInputViewController {
     private var contextWho = ""
     private var contextHelp = ""
 
-    private var serverURL: String {
-        return ConfigManager.shared.serverBaseURL
+    // Use Supabase Edge Function instead of local server
+    private var analyzeImageURL: String {
+        return "\(ConfigManager.shared.supabaseURL)/functions/v1/analyze-image"
+    }
+
+    private var supabaseAnonKey: String {
+        return ConfigManager.shared.supabaseAnonKey
     }
 
     private let whoOptions = ["crush", "dating app", "ex", "friend"]
@@ -247,6 +252,20 @@ class KeyboardViewController: UIInputViewController {
     private func captureImage(_ asset: PHAsset) {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
+        // Check trial photo limit (5 photos for trial users)
+        if !SharedDefaults.shared.isPremium && !SharedDefaults.shared.canUploadPhoto {
+            showError(message: "photo limit reached\nupgrade in app")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                self.startWatching()
+            }
+            return
+        }
+
+        // Track photo upload for trial users
+        if !SharedDefaults.shared.isPremium {
+            SharedDefaults.shared.trialPhotoUploads += 1
+        }
+
         let opts = PHImageRequestOptions()
         opts.deliveryMode = .highQualityFormat  // High quality so AI can read text
         opts.isSynchronous = false
@@ -357,41 +376,39 @@ class KeyboardViewController: UIInputViewController {
     }
 
     private func sendToServer(_ imageData: Data, retryCount: Int = 0) {
-        guard let url = URL(string: "\(serverURL)/api/keyboard/analyze-image") else {
+        guard let url = URL(string: analyzeImageURL) else {
             showError()
             return
         }
 
-        // Unique filename to prevent caching
-        let timestamp = Int(Date().timeIntervalSince1970 * 1000)
-        let uniqueFilename = "kb_\(timestamp).jpg"
+        // Convert image to base64
+        let base64Image = imageData.base64EncodedString()
 
-        let boundary = UUID().uuidString
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-        request.timeoutInterval = 30  // Increased timeout
+        request.timeoutInterval = 45  // Allow time for AI processing
 
-        let userId = SharedDefaults.shared.userId ?? SharedDefaults.shared.supabaseUserId ?? "anonymous"
+        let isTrialUser = !SharedDefaults.shared.isPremium
 
-        var body = Data()
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"image\"; filename=\"\(uniqueFilename)\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
-        body.append(imageData)
-        body.append("\r\n".data(using: .utf8)!)
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"userId\"\r\n\r\n".data(using: .utf8)!)
-        body.append("\(userId)\r\n".data(using: .utf8)!)
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"contextWho\"\r\n\r\n".data(using: .utf8)!)
-        body.append("\(contextWho)\r\n".data(using: .utf8)!)
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"contextHelp\"\r\n\r\n".data(using: .utf8)!)
-        body.append("\(contextHelp)\r\n".data(using: .utf8)!)
-        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
-        request.httpBody = body
+        let body: [String: Any] = [
+            "imageBase64": base64Image,
+            "contextWho": contextWho,
+            "contextHelp": contextHelp,
+            "isTrialUser": isTrialUser,
+            "userName": SharedDefaults.shared.userName ?? "",
+            "textSamples": SharedDefaults.shared.textSamples,
+            "fromKeyboard": true  // Flag to get suggestions format
+        ]
+
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            showError(message: "couldn't send\ntry again")
+            return
+        }
 
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             DispatchQueue.main.async {
@@ -413,9 +430,7 @@ class KeyboardViewController: UIInputViewController {
                     if nsError.code == -1009 {
                         self?.showError(message: "no internet\ncheck connection")
                     } else if nsError.code == -1001 {
-                        self?.showError(message: "request timed out\ntry again")
-                    } else if nsError.code == -1004 {
-                        self?.showError(message: "server not running\nstart server first")
+                        self?.showError(message: "taking too long\ntry again")
                     } else {
                         self?.showError(message: "connection failed\ntry again")
                     }
@@ -435,15 +450,63 @@ class KeyboardViewController: UIInputViewController {
 
                 guard let data = data,
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let suggestions = json["suggestions"] as? [String], !suggestions.isEmpty else {
+                      let reply = json["reply"] as? String else {
                     print("Keyboard: Invalid response data")
                     self?.showError(message: "bad response\ntry again")
+                    return
+                }
+
+                // Parse suggestions from the reply text
+                let suggestions = self?.parseSuggestions(from: reply) ?? []
+                if suggestions.isEmpty {
+                    self?.showError(message: "no suggestions\ntry again")
                     return
                 }
 
                 self?.showSuggestions(suggestions)
             }
         }.resume()
+    }
+
+    private func parseSuggestions(from text: String) -> [String] {
+        // Try to extract quoted suggestions first
+        let pattern = "\"([^\"]{5,100})\""
+        if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+            let range = NSRange(text.startIndex..., in: text)
+            let matches = regex.matches(in: text, options: [], range: range)
+
+            let suggestions = matches.compactMap { match -> String? in
+                if let range = Range(match.range(at: 1), in: text) {
+                    return String(text[range])
+                }
+                return nil
+            }.filter { !$0.lowercased().contains("their message") && !$0.lowercased().contains("suggestion") }
+
+            if suggestions.count >= 2 {
+                return Array(suggestions.prefix(3))
+            }
+        }
+
+        // Fallback: look for numbered options like "1. text" or "1) text"
+        let numberedPattern = "(?:^|\\n)\\s*[123][.)]\\s*[\"']?([^\"'\\n]{5,100})[\"']?"
+        if let regex = try? NSRegularExpression(pattern: numberedPattern, options: [.anchorsMatchLines]) {
+            let range = NSRange(text.startIndex..., in: text)
+            let matches = regex.matches(in: text, options: [], range: range)
+
+            let suggestions = matches.compactMap { match -> String? in
+                if let range = Range(match.range(at: 1), in: text) {
+                    return String(text[range]).trimmingCharacters(in: .whitespaces)
+                }
+                return nil
+            }
+
+            if suggestions.count >= 2 {
+                return Array(suggestions.prefix(3))
+            }
+        }
+
+        // Final fallback
+        return ["hey what's up", "that's cool", "tell me more"]
     }
 
     private func showSuggestions(_ suggestions: [String]) {

@@ -16,7 +16,8 @@ serve(async (req) => {
       throw new Error('ANTHROPIC_API_KEY not configured')
     }
 
-    const { imageBase64, contextWho, contextHelp, isTrialUser, userName, textSamples } = await req.json()
+    const body = await req.json()
+    const { imageBase64, contextWho, contextHelp, isTrialUser, userName, textSamples } = body
 
     if (!imageBase64) {
       throw new Error('No image provided')
@@ -25,35 +26,62 @@ serve(async (req) => {
     // Build system prompt based on trial status
     let systemPrompt: string
 
+    // Check if request is from keyboard (needs specific format)
+    const fromKeyboard = body.fromKeyboard === true
+
     if (isTrialUser === true || isTrialUser === 'true') {
       // Trial users get basic analysis
-      systemPrompt = `You analyze text message screenshots and give brief advice.
-Give a VERY BASIC response:
-1. Briefly say what's happening (1 sentence)
-2. Give ONE generic reply suggestion
-Keep it short. End with: "upgrade to premium for personalized replies that match your style"`
+      systemPrompt = `read the screenshot and give quick advice.
+- one sentence about what's happening
+- one basic reply suggestion
+end with: "upgrade for personalized replies that match your style"`
+    } else if (fromKeyboard) {
+      // Keyboard needs just the reply options, no commentary
+      systemPrompt = `Look at this text conversation screenshot. Give exactly 3 reply options.
+
+RULES:
+- Just give 3 options, no commentary or explanation
+- Each option should be a complete text message ready to send
+- lowercase, casual, like real texts
+- variety: one chill, one confident, one playful
+${contextWho ? `- they're texting: ${contextWho}` : ''}
+${contextHelp ? `- they need help with: ${contextHelp}` : ''}
+${textSamples ? `- match this style: "${textSamples.slice(0, 80)}"` : ''}
+
+FORMAT (exactly like this):
+1. "first option here"
+2. "second option here"
+3. "third option here"`
     } else {
       // Premium users get full personalized analysis
-      systemPrompt = `You're ${userName || 'someone'}'s friend helping them figure out what to text back. Read the screenshot first.
+      const name = userName || 'friend'
+      systemPrompt = `You're ${name}'s friend helping them text back. Look at the screenshot.
 
-IMPORTANT - Be inclusive:
-- This app is for everyone - all genders, all orientations
-- Pick up on context clues to understand who they're texting
-- Don't assume - if unclear, use neutral language
-- Adapt your advice based on who they're talking to
+IMPORTANT: Address them by name (${name}) in your response! Start with something like "ok ${name}" or "yo ${name}" or "${name}," to make it personal.
 
-HOW TO HELP:
-1. Look at what the other person said (their last message)
-2. Give a quick read on the vibe - is it going well or nah?
-3. Give 2-3 reply options that actually respond to what they said
+VIBE CHECK:
+- works for everyone - any gender, any orientation, any situation
+- pick up on who they're talking to from context
+- adapt your suggestions to fit
 
-YOUR REPLY OPTIONS SHOULD:
-- Actually respond to their message, not be generic
-- Sound like real texts (lowercase, casual)
-- Give variety: one chill, one more confident, one playful
-${textSamples ? `- Match this texting style: "${textSamples.slice(0, 100)}"` : ''}
+DO THIS:
+1. Quick read: is this convo going well? what's the vibe?
+2. Give 2-3 reply options they can literally copy and send
 
-Keep commentary brief, focus on the options.`
+REPLY OPTIONS SHOULD BE:
+- actual responses to what the other person said (not generic)
+- lowercase, casual, like real texts
+- variety: one chill option, one confident, one playful/flirty
+${textSamples ? `- match their style: "${textSamples.slice(0, 100)}"` : ''}
+
+keep your commentary SHORT. focus on giving them the options. format like:
+
+yo ${name}, [quick vibe read - 1 sentence]
+
+try these:
+1. "actual reply text here"
+2. "another option"
+3. "third option"`
     }
 
     // Build user prompt
