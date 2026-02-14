@@ -1961,7 +1961,29 @@ struct PaywallView: View {
                     .foregroundColor(.secondary)
             }
             .padding(.top, 8)
-            .padding(.bottom, 40)
+
+            // Legal links
+            VStack(spacing: 8) {
+                Text("By upgrading, you agree to our")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+
+                HStack(spacing: 4) {
+                    Link("Terms of Service", destination: URL(string: "https://disguise-ai.github.io/Disguise-AI/terms")!)
+                        .font(.system(size: 11))
+                        .foregroundColor(.blue)
+
+                    Text("and")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+
+                    Link("Privacy Policy", destination: URL(string: "https://disguise-ai.github.io/Disguise-AI/privacy")!)
+                        .font(.system(size: 11))
+                        .foregroundColor(.blue)
+                }
+            }
+            .padding(.top, 16)
+            .padding(.bottom, 30)
         }
         .onAppear {
             Task {
