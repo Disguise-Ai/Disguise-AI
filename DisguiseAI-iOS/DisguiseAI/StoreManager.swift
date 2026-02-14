@@ -170,12 +170,15 @@ class StoreManager: ObservableObject {
     }
 
     private func syncPremiumToServer(userId: String) {
-        guard let url = URL(string: "\(ConfigManager.shared.serverBaseURL)/api/upgrade") else { return }
+        // Sync premium status to Supabase
+        guard let url = URL(string: "\(ConfigManager.shared.supabaseURL)/rest/v1/profiles?id=eq.\(userId)") else { return }
 
         var request = URLRequest(url: url)
-        request.httpMethod = "POST"
+        request.httpMethod = "PATCH"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: ["userId": userId])
+        request.setValue(ConfigManager.shared.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(ConfigManager.shared.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["is_premium": true])
 
         URLSession.shared.dataTask(with: request).resume()
     }
