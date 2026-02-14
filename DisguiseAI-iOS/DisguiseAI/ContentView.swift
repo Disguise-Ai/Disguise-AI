@@ -183,6 +183,10 @@ struct EmailAuthView: View {
                     SharedDefaults.shared.userId = user.id
                     SharedDefaults.shared.trialStartDate = Date()  // Start 7-day trial
                     SharedDefaults.shared.isVerifiedUser = true     // Mark as verified
+
+                    // Login to RevenueCat
+                    StoreManager.shared.loginUser(userId: user.id)
+
                     isLoading = false
                     onComplete()
 
@@ -203,6 +207,9 @@ struct EmailAuthView: View {
                     SharedDefaults.shared.isVerifiedUser = true
                     SharedDefaults.shared.hasCompletedOnboarding = true
                     SharedDefaults.shared.hasCompletedKeyboardSetup = true
+
+                    // Login to RevenueCat
+                    StoreManager.shared.loginUser(userId: user.id)
 
                     // Load profile FIRST so we have their name and settings
                     SupabaseManager.shared.fetchUserProfile(userId: user.id) { profileResult in
@@ -1987,7 +1994,7 @@ struct PaywallView: View {
         }
         .onAppear {
             Task {
-                await storeManager.loadProducts()
+                await storeManager.loadOfferings()
             }
         }
     }

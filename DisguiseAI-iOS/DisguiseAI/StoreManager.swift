@@ -1,49 +1,78 @@
 import Foundation
-import StoreKit
+import RevenueCat
 
 class StoreManager: ObservableObject {
     static let shared = StoreManager()
 
-    // Your product ID - set this up in App Store Connect
+    // RevenueCat API Key - get this from RevenueCat dashboard
+    static let revenueCatAPIKey = "YOUR_REVENUECAT_API_KEY"  // Replace with your key
+
+    // Your entitlement ID from RevenueCat
+    static let premiumEntitlementID = "premium"
+
+    // Your product ID
     static let premiumMonthlyID = "com.disguiseai.premium.monthly"
 
-    @Published var products: [Product] = []
-    @Published var purchasedProductIDs: Set<String> = []
+    @Published var packages: [Package] = []
+    @Published var isSubscribed = false
     @Published var isLoading = false
     @Published var errorMessage: String?
 
-    private var updateListenerTask: Task<Void, Error>?
+    private init() {
+        // Configure RevenueCat
+        Purchases.logLevel = .debug  // Set to .error for production
+        Purchases.configure(withAPIKey: StoreManager.revenueCatAPIKey)
 
-    init() {
-        updateListenerTask = listenForTransactions()
+        // Set user ID if available
+        if let userId = SharedDefaults.shared.userId ?? SharedDefaults.shared.supabaseUserId {
+            Purchases.shared.logIn(userId) { _, _, _ in }
+        }
 
+        // Check subscription status
         Task {
-            await loadProducts()
-            await updatePurchasedProducts()
+            await checkSubscriptionStatus()
+            await loadOfferings()
         }
     }
 
-    deinit {
-        updateListenerTask?.cancel()
+    // MARK: - Load Offerings
+    @MainActor
+    func loadOfferings() async {
+        do {
+            let offerings = try await Purchases.shared.offerings()
+            if let current = offerings.current {
+                packages = current.availablePackages
+                print("Loaded \(packages.count) packages")
+            }
+        } catch {
+            print("Failed to load offerings: \(error)")
+            errorMessage = "Failed to load subscription options"
+        }
     }
 
-    // MARK: - Load Products
+    // MARK: - Check Subscription Status
     @MainActor
-    func loadProducts() async {
+    func checkSubscriptionStatus() async {
         do {
-            let productIDs = [StoreManager.premiumMonthlyID]
-            products = try await Product.products(for: productIDs)
-            print("Loaded \(products.count) products")
+            let customerInfo = try await Purchases.shared.customerInfo()
+            let hasPremium = customerInfo.entitlements[StoreManager.premiumEntitlementID]?.isActive == true
+
+            isSubscribed = hasPremium
+            SharedDefaults.shared.isPremium = hasPremium
+
+            // Sync to Supabase
+            if hasPremium, let userId = SharedDefaults.shared.userId ?? SharedDefaults.shared.supabaseUserId {
+                syncPremiumToSupabase(userId: userId, isPremium: true)
+            }
         } catch {
-            print("Failed to load products: \(error)")
-            errorMessage = "Failed to load subscription options"
+            print("Failed to check subscription: \(error)")
         }
     }
 
     // MARK: - Purchase
     @MainActor
     func purchase() async -> Bool {
-        guard let product = products.first else {
+        guard let package = packages.first else {
             errorMessage = "Product not available. Please try again later."
             return false
         }
@@ -52,33 +81,36 @@ class StoreManager: ObservableObject {
         errorMessage = nil
 
         do {
-            let result = try await product.purchase()
+            let result = try await Purchases.shared.purchase(package: package)
 
-            switch result {
-            case .success(let verification):
-                let transaction = try checkVerified(verification)
+            let hasPremium = result.customerInfo.entitlements[StoreManager.premiumEntitlementID]?.isActive == true
 
-                // Update purchased status
-                purchasedProductIDs.insert(transaction.productID)
-                updatePremiumStatus(true)
+            if hasPremium {
+                isSubscribed = true
+                SharedDefaults.shared.isPremium = true
 
-                // Finish the transaction
-                await transaction.finish()
+                // Sync to Supabase
+                if let userId = SharedDefaults.shared.userId ?? SharedDefaults.shared.supabaseUserId {
+                    syncPremiumToSupabase(userId: userId, isPremium: true)
+                }
 
                 isLoading = false
                 return true
+            }
 
-            case .userCancelled:
-                isLoading = false
+            isLoading = false
+            return false
+
+        } catch let error as ErrorCode {
+            isLoading = false
+
+            switch error {
+            case .purchaseCancelledError:
+                // User cancelled, not an error
                 return false
-
-            case .pending:
-                isLoading = false
-                errorMessage = "Purchase is pending approval"
-                return false
-
-            @unknown default:
-                isLoading = false
+            default:
+                errorMessage = "Purchase failed. Please try again."
+                print("Purchase error: \(error)")
                 return false
             }
         } catch {
@@ -96,8 +128,18 @@ class StoreManager: ObservableObject {
         errorMessage = nil
 
         do {
-            try await AppStore.sync()
-            await updatePurchasedProducts()
+            let customerInfo = try await Purchases.shared.restorePurchases()
+            let hasPremium = customerInfo.entitlements[StoreManager.premiumEntitlementID]?.isActive == true
+
+            isSubscribed = hasPremium
+            SharedDefaults.shared.isPremium = hasPremium
+
+            if hasPremium {
+                if let userId = SharedDefaults.shared.userId ?? SharedDefaults.shared.supabaseUserId {
+                    syncPremiumToSupabase(userId: userId, isPremium: true)
+                }
+            }
+
             isLoading = false
         } catch {
             isLoading = false
@@ -106,71 +148,8 @@ class StoreManager: ObservableObject {
         }
     }
 
-    // MARK: - Check Current Entitlements
-    @MainActor
-    func updatePurchasedProducts() async {
-        for await result in Transaction.currentEntitlements {
-            do {
-                let transaction = try checkVerified(result)
-
-                if transaction.revocationDate == nil {
-                    purchasedProductIDs.insert(transaction.productID)
-                    updatePremiumStatus(true)
-                } else {
-                    purchasedProductIDs.remove(transaction.productID)
-                }
-            } catch {
-                print("Transaction verification failed: \(error)")
-            }
-        }
-    }
-
-    // MARK: - Listen for Transactions
-    private func listenForTransactions() -> Task<Void, Error> {
-        return Task.detached {
-            for await result in Transaction.updates {
-                do {
-                    let transaction = try self.checkVerified(result)
-
-                    await MainActor.run {
-                        if transaction.revocationDate == nil {
-                            self.purchasedProductIDs.insert(transaction.productID)
-                            self.updatePremiumStatus(true)
-                        } else {
-                            self.purchasedProductIDs.remove(transaction.productID)
-                        }
-                    }
-
-                    await transaction.finish()
-                } catch {
-                    print("Transaction listener error: \(error)")
-                }
-            }
-        }
-    }
-
-    // MARK: - Verify Transaction
-    private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
-        switch result {
-        case .unverified:
-            throw StoreError.failedVerification
-        case .verified(let safe):
-            return safe
-        }
-    }
-
-    // MARK: - Update Premium Status
-    private func updatePremiumStatus(_ isPremium: Bool) {
-        SharedDefaults.shared.isPremium = isPremium
-
-        // Also sync to server
-        if isPremium, let userId = SharedDefaults.shared.userId ?? SharedDefaults.shared.supabaseUserId {
-            syncPremiumToServer(userId: userId)
-        }
-    }
-
-    private func syncPremiumToServer(userId: String) {
-        // Sync premium status to Supabase
+    // MARK: - Sync Premium to Supabase
+    private func syncPremiumToSupabase(userId: String, isPremium: Bool) {
         guard let url = URL(string: "\(ConfigManager.shared.supabaseURL)/rest/v1/profiles?id=eq.\(userId)") else { return }
 
         var request = URLRequest(url: url)
@@ -178,21 +157,36 @@ class StoreManager: ObservableObject {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(ConfigManager.shared.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(ConfigManager.shared.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: ["is_premium": true])
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["is_premium": isPremium])
 
         URLSession.shared.dataTask(with: request).resume()
     }
 
     // MARK: - Get Price String
     var priceString: String {
-        guard let product = products.first else {
+        guard let package = packages.first else {
             return "$9.99/month"
         }
-        return product.displayPrice + "/month"
+        return package.localizedPriceString + "/month"
     }
-}
 
-enum StoreError: Error {
-    case failedVerification
-    case productNotFound
+    // MARK: - Login User (call when user signs in)
+    func loginUser(userId: String) {
+        Purchases.shared.logIn(userId) { customerInfo, _, error in
+            if let error = error {
+                print("RevenueCat login error: \(error)")
+                return
+            }
+
+            Task { @MainActor in
+                await self.checkSubscriptionStatus()
+            }
+        }
+    }
+
+    // MARK: - Logout User (call when user signs out)
+    func logoutUser() {
+        Purchases.shared.logOut { _, _ in }
+        isSubscribed = false
+    }
 }
