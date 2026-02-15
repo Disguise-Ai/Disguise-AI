@@ -238,6 +238,17 @@ class SharedDefaults {
         return max(0, 5 - trialPhotoUploads)  // 5 photos for trial
     }
 
+    // MARK: - Clear Profile Data (for new accounts)
+    func clearProfileData() {
+        // Clear all profile-specific data so new users start fresh
+        let profileKeys = ["userName", "responseStyle", "messageLength", "emojiUsage", "flirtiness",
+                          "selectedVibes", "personality", "textSamples", "recentSuggestions",
+                          "pendingContext", "pendingSuggestion", "localChatHistory",
+                          "savedConversations", "trialPhotoUploads", "isPremium",
+                          "hasCompletedOnboarding", "hasCompletedKeyboardSetup"]
+        profileKeys.forEach { defaults.removeObject(forKey: $0) }
+    }
+
     // MARK: - Clear All
     func clearAll() {
         let keys = ["userId", "userName", "hasVerifiedPhone", "phoneNumber", "supabaseUserId",

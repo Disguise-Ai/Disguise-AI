@@ -179,6 +179,9 @@ struct EmailAuthView: View {
             SupabaseManager.shared.signUp(email: email, password: password) { result in
                 switch result {
                 case .success(let user):
+                    // Clear any existing profile data for a fresh start
+                    SharedDefaults.shared.clearProfileData()
+
                     SharedDefaults.shared.supabaseUserId = user.id
                     SharedDefaults.shared.userId = user.id
                     SharedDefaults.shared.trialStartDate = Date()  // Start 7-day trial

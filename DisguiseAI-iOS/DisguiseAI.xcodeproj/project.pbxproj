@@ -16,8 +16,6 @@
 		A1000011001 /* ConfigManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000011000 /* ConfigManager.swift */; };
 		A1000012001 /* Config.json in Resources */ = {isa = PBXBuildFile; fileRef = A1000012000 /* Config.json */; };
 		A1000013001 /* StoreManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000013000 /* StoreManager.swift */; };
-		A4000003001 /* DisguiseKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A2000000000 /* DisguiseKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		A4000004001 /* DisguiseShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A3000000000 /* DisguiseShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A2000001001 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000 /* KeyboardViewController.swift */; };
 		A2000003001 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000003000 /* APIService.swift */; };
 		A2000004001 /* SharedDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000004000 /* SharedDefaults.swift */; };
@@ -28,6 +26,8 @@
 		A3000004001 /* SharedDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000004000 /* SharedDefaults.swift */; };
 		A3000011001 /* ConfigManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000011000 /* ConfigManager.swift */; };
 		A3000012001 /* Config.json in Resources */ = {isa = PBXBuildFile; fileRef = A1000012000 /* Config.json */; };
+		A4000003001 /* DisguiseKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A2000000000 /* DisguiseKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		C92CE3202F410A2500261A10 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = C92CE31F2F410A2500261A10 /* RevenueCat */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -37,13 +37,6 @@
 			proxyType = 1;
 			remoteGlobalIDString = A2000000001;
 			remoteInfo = DisguiseKeyboard;
-		};
-		A4000002000 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = A0000000000 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = A3000000001;
-			remoteInfo = DisguiseShare;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -85,6 +78,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C92CE3202F410A2500261A10 /* RevenueCat in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +106,7 @@
 				A0000003000 /* DisguiseKeyboard */,
 				A0000004000 /* DisguiseShare */,
 				A0000005000 /* Shared */,
+				C92CE31E2F410A2500261A10 /* Frameworks */,
 				A0000006000 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -165,6 +160,13 @@
 				A3000000000 /* DisguiseShare.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		C92CE31E2F410A2500261A10 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -253,6 +255,9 @@
 				Base,
 			);
 			mainGroup = A0000001000;
+			packageReferences = (
+				C97F02FF2F41030600E02CD8 /* XCRemoteSwiftPackageReference "purchases-ios" */,
+			);
 			productRefGroup = A0000006000 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -336,11 +341,6 @@
 			isa = PBXTargetDependency;
 			target = A2000000001 /* DisguiseKeyboard */;
 			targetProxy = A4000001000 /* PBXContainerItemProxy */;
-		};
-		A4000002001 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = A3000000001 /* DisguiseShare */;
-			targetProxy = A4000002000 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -670,6 +670,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		C97F02FF2F41030600E02CD8 /* XCRemoteSwiftPackageReference "purchases-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/RevenueCat/purchases-ios.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.59.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		C92CE31F2F410A2500261A10 /* RevenueCat */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C97F02FF2F41030600E02CD8 /* XCRemoteSwiftPackageReference "purchases-ios" */;
+			productName = RevenueCat;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A0000000000 /* Project object */;
 }

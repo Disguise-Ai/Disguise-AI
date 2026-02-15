@@ -48,12 +48,5 @@
     </array>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>Disguise.AI needs access to your photos to read screenshots of conversations and provide smart response suggestions.</string>
-    <key>NSAppTransportSecurity</key>
-    <dict>
-        <key>NSAllowsArbitraryLoads</key>
-        <true/>
-        <key>NSAllowsLocalNetworking</key>
-        <true/>
-    </dict>
 </dict>
 </plist>

@@ -20,13 +20,6 @@
     <string>1.0</string>
     <key>CFBundleVersion</key>
     <string>1</string>
-    <key>NSAppTransportSecurity</key>
-    <dict>
-        <key>NSAllowsArbitraryLoads</key>
-        <true/>
-        <key>NSAllowsLocalNetworking</key>
-        <true/>
-    </dict>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>Select screenshots to analyze and get smart response suggestions</string>
     <key>NSExtension</key>
