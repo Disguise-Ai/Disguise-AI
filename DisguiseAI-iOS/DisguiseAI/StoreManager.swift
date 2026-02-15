@@ -4,8 +4,8 @@ import RevenueCat
 class StoreManager: ObservableObject {
     static let shared = StoreManager()
 
-    // RevenueCat API Key
-    static let revenueCatAPIKey = "test_omOCBmCSxTKodFpYSvxQTdtMjhA"
+    // RevenueCat API Key (Production)
+    static let revenueCatAPIKey = "appl_hOeAyJhewscmOTGgLQdZBcpvbjh"
 
     // Your entitlement ID from RevenueCat
     static let premiumEntitlementID = "premium"
