@@ -190,6 +190,15 @@ class KeyboardViewController: UIInputViewController {
     }
 
     private func checkAndStart() {
+        // First check if Full Access is enabled (needed for network calls)
+        // UIInputViewController has a built-in hasFullAccess property
+        guard self.hasFullAccess else {
+            statusLabel.text = "enable full access\nin settings → keyboards"
+            statusLabel.textColor = .secondaryLabel
+            return
+        }
+
+        // Then check photo library access
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         if status == .authorized || status == .limited {
             startWatching()
@@ -556,8 +565,8 @@ class KeyboardViewController: UIInputViewController {
         pendingImageData = nil
 
         // Check if Full Access is enabled (required for network)
-        if !isFullAccessEnabled {
-            statusLabel.text = "enable full access\nin keyboard settings"
+        if !self.hasFullAccess {
+            statusLabel.text = "enable full access\nin settings → keyboards"
         } else {
             statusLabel.text = message ?? "couldn't connect\ntap to retry"
         }
@@ -571,11 +580,5 @@ class KeyboardViewController: UIInputViewController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             self.startWatching()
         }
-    }
-
-    private var isFullAccessEnabled: Bool {
-        // Check if we can access pasteboard (requires Full Access)
-        let pasteboard = UIPasteboard.general
-        return pasteboard.hasStrings || pasteboard.hasImages || pasteboard.hasURLs
     }
 }
