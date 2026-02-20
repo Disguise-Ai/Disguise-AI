@@ -1650,6 +1650,44 @@ struct SettingsView: View {
                         onReset()
                     }
                 }
+
+                // MARK: - Legal
+                Section {
+                    Link(destination: URL(string: "https://disguise-ai.github.io/Disguise-AI/terms")!) {
+                        HStack {
+                            Text("Terms of Service")
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Image(systemName: "arrow.up.right")
+                                .foregroundColor(.gray)
+                                .font(.caption)
+                        }
+                    }
+
+                    Link(destination: URL(string: "https://disguise-ai.github.io/Disguise-AI/privacy")!) {
+                        HStack {
+                            Text("Privacy Policy")
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Image(systemName: "arrow.up.right")
+                                .foregroundColor(.gray)
+                                .font(.caption)
+                        }
+                    }
+
+                    Link(destination: URL(string: "https://disguise-ai.github.io/Disguise-AI/support")!) {
+                        HStack {
+                            Text("Support")
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Image(systemName: "arrow.up.right")
+                                .foregroundColor(.gray)
+                                .font(.caption)
+                        }
+                    }
+                } header: {
+                    Text("Legal")
+                }
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
