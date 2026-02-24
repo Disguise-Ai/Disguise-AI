@@ -1641,16 +1641,6 @@ struct SettingsView: View {
                     Text("Subscription")
                 }
 
-                // MARK: - Data
-                Section {
-                    Button("Reset All Data", role: .destructive) {
-                        SharedDefaults.shared.clearAll()
-                        clearLocalSettings()
-                        dismiss()
-                        onReset()
-                    }
-                }
-
                 // MARK: - Legal
                 Section {
                     Link(destination: URL(string: "https://disguise-ai.github.io/Disguise-AI/terms")!) {
@@ -1674,19 +1664,16 @@ struct SettingsView: View {
                                 .font(.caption)
                         }
                     }
+                }
 
-                    Link(destination: URL(string: "https://disguise-ai.github.io/Disguise-AI/support")!) {
-                        HStack {
-                            Text("Support")
-                                .foregroundColor(.primary)
-                            Spacer()
-                            Image(systemName: "arrow.up.right")
-                                .foregroundColor(.gray)
-                                .font(.caption)
-                        }
+                // MARK: - Data
+                Section {
+                    Button("Reset All Data", role: .destructive) {
+                        SharedDefaults.shared.clearAll()
+                        clearLocalSettings()
+                        dismiss()
+                        onReset()
                     }
-                } header: {
-                    Text("Legal")
                 }
             }
             .navigationTitle("Settings")
